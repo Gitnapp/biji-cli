@@ -60,17 +60,17 @@ export function Hero() {
         >
           <Link
             to="/docs/quickstart"
-            className="inline-flex h-11 items-center gap-2 rounded-lg bg-gradient-to-r from-emerald-500 to-cyan-500 px-6 text-[0.95rem] font-medium text-white shadow-[0_0_28px_-6px_rgba(16,185,129,0.7)] transition hover:brightness-110"
+            className="inline-flex h-11 items-center gap-2 rounded-lg bg-gradient-to-r from-emerald-500 to-cyan-500 px-6 text-[0.95rem] font-medium text-white shadow-[0_0_28px_-6px_rgba(16,185,129,0.7)] transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
           >
-            Get started <ArrowRight className="h-4 w-4" />
+            Get started <ArrowRight className="h-4 w-4" aria-hidden />
           </Link>
           <a
             href={site.repo}
             target="_blank"
             rel="noreferrer noopener"
-            className="inline-flex h-11 items-center gap-2 rounded-lg border border-border bg-background/50 px-6 text-[0.95rem] font-medium text-foreground backdrop-blur transition hover:bg-accent"
+            className="inline-flex h-11 items-center gap-2 rounded-lg border border-border bg-background/50 px-6 text-[0.95rem] font-medium text-foreground backdrop-blur transition hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
           >
-            <Github className="h-4 w-4" /> View on GitHub
+            <Github className="h-4 w-4" aria-hidden /> View on GitHub
           </a>
         </motion.div>
 

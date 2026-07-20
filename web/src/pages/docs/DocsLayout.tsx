@@ -8,6 +8,7 @@ import { DocsSearch } from "@/components/docs/docs-search"
 import { TocProvider } from "@/components/docs/toc-context"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Logo } from "@/components/logo"
+import { SkipLink } from "@/components/skip-link"
 
 export function DocsLayout() {
   const [searchOpen, setSearchOpen] = useState(false)
@@ -27,6 +28,7 @@ export function DocsLayout() {
   return (
     <TocProvider>
       <div className="flex min-h-screen flex-col bg-background">
+        <SkipLink />
         <SiteHeader
           onOpenSearch={() => setSearchOpen(true)}
           onToggleSidebar={() => setSidebarOpen(true)}
@@ -45,7 +47,7 @@ export function DocsLayout() {
 
             {/* Content + TOC */}
             <div className="min-w-0 xl:grid xl:grid-cols-[minmax(0,1fr)_13rem] xl:gap-10">
-              <main className="min-w-0 py-10">
+              <main id="main-content" className="min-w-0 py-10">
                 <Outlet />
               </main>
               <aside className="hidden xl:block">

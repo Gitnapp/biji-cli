@@ -15,7 +15,7 @@ export function Stats() {
         {items.map((it, i) => (
           <Reveal key={it.label} delay={i * 0.06}>
             <div className="px-2 py-10 text-center">
-              <div className="text-4xl font-bold tracking-tight text-gradient sm:text-5xl">
+              <div className="text-4xl font-bold tracking-tight text-gradient tabular-nums sm:text-5xl">
                 {it.value}
               </div>
               <div className="mt-2 text-sm text-muted-foreground">{it.label}</div>

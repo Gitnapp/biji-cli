@@ -78,6 +78,10 @@
   body {
     @apply bg-background text-foreground antialiased;
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    touch-action: manipulation;
+  }
+  h1, h2, h3, h4 {
+    text-wrap: pretty;
   }
   /* respect motion preferences */
   @media (prefers-reduced-motion: reduce) {

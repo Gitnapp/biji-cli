@@ -1,5 +1,6 @@
 import { SiteHeader } from "@/components/site-header"
 import { SiteFooter } from "@/components/site-footer"
+import { SkipLink } from "@/components/skip-link"
 import { Hero } from "@/components/landing/hero"
 import { Stats } from "@/components/landing/stats"
 import { Features } from "@/components/landing/features"
@@ -12,8 +13,9 @@ import { Cta } from "@/components/landing/cta"
 export function Landing() {
   return (
     <div className="flex min-h-screen flex-col bg-background">
+      <SkipLink />
       <SiteHeader />
-      <main className="flex-1">
+      <main id="main-content" className="flex-1">
         <Hero />
         <Stats />
         <Features />

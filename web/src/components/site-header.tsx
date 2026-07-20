@@ -35,7 +35,7 @@ export function SiteHeader({
               to={l.href}
               className={({ isActive }) =>
                 cn(
-                  "rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground",
+                  "rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                   isActive && "text-foreground",
                 )
               }
@@ -81,7 +81,7 @@ export function SiteHeader({
           <ModeToggle />
           <Link
             to="/docs/quickstart"
-            className="ml-1 hidden rounded-lg bg-gradient-to-r from-emerald-500 to-cyan-500 px-4 py-2 text-sm font-medium text-white shadow-[0_0_20px_-6px_rgba(16,185,129,0.6)] transition hover:brightness-110 sm:inline-flex"
+            className="ml-1 hidden rounded-lg bg-gradient-to-r from-emerald-500 to-cyan-500 px-4 py-2 text-sm font-medium text-white shadow-[0_0_20px_-6px_rgba(16,185,129,0.6)] transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background sm:inline-flex"
           >
             Get started
           </Link>
