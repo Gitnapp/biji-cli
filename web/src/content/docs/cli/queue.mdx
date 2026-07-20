@@ -1,0 +1,286 @@
+---
+title: Batch Queue
+description: A local background daemon for batch link parsing and media uploads, with dedup and retries.
+---
+
+The queue lets you submit many jobs at once and return immediately while a local worker
+processes them asynchronously. It is backed by SQLite and shipped as the `@biji/queue` package,
+driven from the CLI under `biji queue`.
+
+Use it when you have a pile of URLs to parse into notes, or a folder of audio/video files to
+upload — hand them to the queue and get on with your day. The same database and worker are shared
+with the MCP server, so Claude can enqueue work in a conversation and it keeps running after the
+chat closes.
+
+## How it works
+
+Submitting a job is instant and non-blocking. A background worker claims pending jobs and runs
+them with a concurrency of 3, retrying transient failures on its own.
+
+<Steps>
+  <Step title="Submit jobs">
+    `biji queue add` (or `queue upload`) writes rows into the SQLite database and returns right away
+    with the new job ids.
+  </Step>
+  <Step title="Worker auto-forks">
+    On the first `queue add` that enqueues at least one new job, the CLI forks a detached background
+    worker process (unless you pass `--no-daemon`). If a worker is already alive it is reused — never
+    duplicated.
+  </Step>
+  <Step title="Jobs run concurrently">
+    The worker polls for pending jobs and runs up to 3 at a time. Each result (note id, title,
+    content length) is written back onto the job row.
+  </Step>
+  <Step title="Worker idles out">
+    When there is no work for 5 minutes, the worker logs an idle message and exits. The next
+    `queue add` forks a fresh one.
+  </Step>
+</Steps>
+
+<Note>
+The worker shuts down gracefully on `SIGTERM` and `SIGINT`: it stops claiming new jobs, finishes
+whatever is in flight, then exits. Use `biji queue stop` to trigger this.
+</Note>
+
+## Storage
+
+Everything lives under the `get-biji` config root — `~/.config/get-biji/queue/` (or
+`$XDG_CONFIG_HOME/get-biji/queue/` when that variable is set).
+
+| File | Purpose |
+|---|---|
+| `queue.db` | SQLite database (WAL mode) holding every job row. Safe for concurrent multi-process read/write. |
+| `worker.log` | Append-only worker log. `biji queue logs` reads this. |
+| `worker.pid` | PID of the current background worker, used for liveness checks. |
+
+## Commands
+
+| Command | What it does |
+|---|---|
+| `queue add [urls...]` | Enqueue one or more URLs as link jobs; auto-starts the worker. |
+| `queue upload [files...]` | Enqueue local audio/video files as upload jobs. |
+| `queue status` | Show worker liveness and a per-status count summary. |
+| `queue list` | List jobs, most recent first. |
+| `queue show <id>` | Print a single job's full JSON detail. |
+| `queue logs` | Print the worker log, optionally following new lines. |
+| `queue retry [ids...]` | Re-queue failed jobs (resets their attempt counter). |
+| `queue cancel <ids...>` | Cancel pending jobs (running ones are not interrupted). |
+| `queue clear` | Delete finished jobs (`done` by default, everything with `--all`). |
+| `queue worker` | Run the worker in the foreground for debugging. |
+| `queue stop` | Send `SIGTERM` to the background worker. |
+
+### queue add
+
+Enqueue URLs as link jobs. Each URL is parsed by the AI link analyzer and turned into a note.
+
+```bash
+# Enqueue 100 links from a file into a KB topic, tagged as a batch
+biji queue add -f urls.txt --topic some-kb --batch reading-2026q2
+
+# Enqueue a couple of URLs inline with a shared prompt
+biji queue add https://x.com/a https://x.com/b -p "Summarize in three sentences"
+```
+
+<ParamField name="urls" type="string[]">
+One or more URLs to enqueue, passed as positional arguments. Combine with `--file` to add more.
+</ParamField>
+
+<ParamField name="-f, --file" type="string">
+Read URLs from a file, one per line. Blank lines and lines starting with `#` are skipped.
+</ParamField>
+
+<ParamField name="--topic" type="string">
+Drop the resulting notes into a 知识库 (knowledge base) topic, given by its alias or numeric id.
+</ParamField>
+
+<ParamField name="-p, --prompt" type="string">
+Custom AI instruction applied to every URL in this call.
+</ParamField>
+
+<ParamField name="--batch" type="string">
+Tag these jobs with a batch id so you can filter them later in `queue list --batch` or bulk-retry.
+</ParamField>
+
+<ParamField name="--max-attempts" type="number" default="3">
+Maximum attempts per job before it is marked `failed`. Raise this when you expect rate limiting.
+</ParamField>
+
+<ParamField name="--force" type="boolean">
+Skip the dedupe check and enqueue even if an identical URL is already pending, running, or done.
+</ParamField>
+
+<ParamField name="--no-daemon" type="boolean">
+Do not auto-start the worker. Enqueue only; start it later with `biji queue worker`.
+</ParamField>
+
+<ParamField name="--json" type="boolean">
+Emit machine-readable JSON — enqueued ids, skipped duplicates, and daemon info.
+</ParamField>
+
+### queue upload
+
+Enqueue local audio/video files as upload jobs. Each file is uploaded to OSS and analyzed into a note.
+
+```bash
+# Batch-upload a folder of recordings into a topic
+biji queue upload ./recordings/*.mp3 --topic podcasts
+```
+
+The flags mirror `queue add`, with two differences:
+
+<ParamField name="-f, --file-list" type="string">
+Read file paths from a list, one per line (note: on `queue upload` the `-f` flag is `--file-list`,
+not `--file`).
+</ParamField>
+
+<ParamField name="-k, --kind" type="string">
+Force the media kind to `audio` or `video`. Auto-detected from the file extension when omitted.
+</ParamField>
+
+## Job statuses
+
+| Status | Meaning |
+|---|---|
+| `pending` | Waiting to be claimed by the worker. |
+| `running` | Claimed and in flight. Each claim increments the job's attempt counter. |
+| `done` | Finished successfully; the result row holds `note_id`, `title`, and more. |
+| `failed` | Exhausted `max_attempts`. Re-submit or `queue retry` to revive it. |
+| `canceled` | Canceled while pending via `queue cancel`. |
+
+## Fault tolerance
+
+The worker is built to survive flaky networks, rate limits, and its own crashes.
+
+| Behavior | Value |
+|---|---|
+| Concurrency | 3 jobs at a time |
+| Default max attempts | 3 (override with `--max-attempts`) |
+| Per-job timeout | 10 minutes (treated as a retry-able error) |
+| Rate-limit backoff | Exponential, 5s to a 10-minute cap |
+| Idle exit | 5 minutes with no work |
+| Crash-recovery threshold | 15 minutes |
+
+### Retries
+
+Business errors are retried until the job's attempt count reaches `--max-attempts` (default 3),
+after which the job is marked `failed`. Every attempt — including a backed-off retry — consumes one
+attempt from that budget.
+
+### Rate-limit backoff
+
+When an error looks like a rate limit (the biji error code `h.c=40014`, or any message matching
+`rate limit` / `too many requests`), the worker sleeps with exponential backoff before re-queuing:
+5s, then 10s, 20s, and so on, capped at 10 minutes. This still consumes an attempt, so raise
+`--max-attempts` for jobs you expect to be throttled.
+
+### Per-job timeout
+
+A single job may run for at most 10 minutes. If it exceeds that, the run is aborted and treated as a
+retry-able error.
+
+### Crash recovery
+
+On startup the worker looks for `running` jobs that were abandoned by a previous crash — those whose
+`started_at` is older than 15 minutes (or missing entirely) — and resets them to `pending`. The
+15-minute threshold ensures it never reclaims a job that is genuinely still in flight on a sibling
+worker.
+
+## Deduplication
+
+By default the queue refuses to enqueue a job that duplicates existing work, so re-running a batch
+does not create duplicate notes.
+
+- The dedupe key is an exact match on `link:<url>` for link jobs or `upload:<file>` for upload jobs.
+- A new job is skipped if an existing job with the same key is `pending`, `running`, or `done`.
+- Jobs in `failed` or `canceled` state are **not** treated as duplicates — you can re-submit them
+  freely (or revive them in place with `queue retry`).
+- Duplicates are reported in the command output and, with `--json`, in a `duplicates` array.
+
+<Warning>
+URLs are **not** normalized. A `?utm_source=...` variant counts as a distinct URL and will not
+dedupe against the clean one. Clean your input list beforehand, or accept that variants become
+separate notes.
+</Warning>
+
+Pass `--force` to bypass dedupe entirely and always insert a fresh row.
+
+## Inspecting and controlling
+
+```bash
+# Is the worker alive? How many pending / done / failed?
+biji queue status
+
+# Recent jobs, filtered views
+biji queue list -n 30                    # 30 most recent
+biji queue list --status failed          # only failures
+biji queue list --batch reading-2026q2   # by batch id
+
+# Full JSON for one job
+biji queue show mp97cz3w_no3suf
+
+# Follow the log in real time
+biji queue logs -f
+```
+
+`queue list` accepts `-s, --status` to filter by status, `-n, --limit` to cap the count (default 20),
+and `--batch` to scope to a batch id. `queue logs` accepts `-n, --lines` to control how many trailing
+lines are printed (default 50) and `-f, --follow` to stream new output.
+
+### Retrying and canceling
+
+```bash
+# Re-queue every failed job
+biji queue retry --all-failed
+
+# Re-queue specific jobs by id
+biji queue retry mp97cz3w_no3suf mp97cz3x_3nl1kw
+
+# Cancel pending jobs (running ones keep going)
+biji queue cancel mp97cz3w_no3suf
+```
+
+`queue retry` resets the attempt counter to zero and re-forks the worker if needed. Passing explicit
+ids can also revive `canceled` and `done` jobs, whereas `--all-failed` only touches `failed` ones.
+`queue cancel` only affects jobs that are still `pending`.
+
+### Clearing the queue
+
+```bash
+biji queue clear          # delete only 'done' jobs
+biji queue clear --all    # delete EVERY job, including pending/running
+```
+
+<Danger>
+`queue clear --all` is a full wipe — it deletes every job row, including `pending` and `running`
+work, and cannot be undone. Prefer the default `queue clear` (which removes only finished `done`
+jobs) unless you truly want to reset the whole queue.
+</Danger>
+
+### Managing the worker directly
+
+```bash
+biji queue worker         # run in the foreground (debug); Ctrl-C to stop
+biji queue stop           # SIGTERM the background worker (graceful)
+```
+
+`queue worker` runs the loop attached to your terminal, which is handy for debugging. Add `--daemon`
+to have that process register itself as the official background worker (it writes `worker.pid` and
+clears it on exit). `queue stop` sends `SIGTERM` to the running worker so it drains in-flight jobs
+before exiting.
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Upload media" href="/docs/cli/upload">
+    Upload a single audio or video file and analyze it into a note synchronously.
+  </Card>
+  <Card title="Knowledge bases" href="/docs/cli/knowledge-base">
+    Organize notes into 知识库 (knowledge base) topics you can target with --topic.
+  </Card>
+  <Card title="MCP server" href="/docs/mcp-server">
+    The same queue exposed as MCP tools so Claude can enqueue work in a conversation.
+  </Card>
+  <Card title="CLI overview" href="/docs/cli/notes">
+    Write, search, edit, and export notes from the biji command line.
+  </Card>
+</CardGroup>

@@ -1,0 +1,280 @@
+---
+title: Notes
+description: Create, search, read, edit, and delete notes from the terminal with the biji CLI.
+---
+
+The `biji` CLI covers the full lifecycle of a note — write it, find it, read it, edit it,
+delete it, and recover it from the recycle bin — without leaving your shell. Every command
+below assumes you have already run `biji auth login` (see [Authentication](/docs/authentication)).
+
+## note_id vs prime_id
+
+Each note carries two identifiers, and most commands accept either one:
+
+- **`note_id`** — the note's own id, a numeric string. It is what you see in listings and
+  what other endpoints (tags, export) key off of.
+- **`prime_id`** — a stable slug-style id used by the write/update/delete path internally.
+  `biji write` prints it on creation, and the recycle-bin commands restore/delete by it.
+
+Commands like `biji get`, `biji edit`, and `biji rm` resolve whichever id you pass, so in day-to-day
+use you can copy either value straight out of `biji search` output.
+
+## Create a note — `biji write`
+
+Creates a note from a positional argument, a file, stdin, or your `$EDITOR`. The content is
+Markdown; the CLI converts it to biji.com's TipTap (ProseMirror) document format before upload.
+
+The content source is resolved in priority order: positional argument, then `-f/--file`,
+then piped stdin, then an interactive `$EDITOR` session.
+
+```bash
+# Inline content
+biji write "Today's idea: ship the notes docs page."
+
+# With a title, from a Markdown file
+biji write -t "Meeting notes" -f ./standup.md
+
+# From stdin
+echo "Quick capture" | biji write
+
+# No content anywhere → opens $EDITOR (falls back to $VISUAL, then vi)
+biji write -t "Draft"
+```
+
+<ParamField name="content" type="string">
+  Positional. The note body as Markdown. Highest-priority source; omit it to use a file, stdin, or the editor.
+</ParamField>
+<ParamField name="-f, --file" type="string">
+  Read the note body from a file path.
+</ParamField>
+<ParamField name="-t, --title" type="string">
+  Note title. Optional — an untitled note is created if omitted.
+</ParamField>
+<ParamField name="--topic" type="string">
+  Create the note directly inside a topic (a 知识库 / knowledge-base entry). Pass a `topic_id`.
+</ParamField>
+<ParamField name="--json" type="boolean">
+  Print the raw API response instead of the formatted summary.
+</ParamField>
+
+On success the command prints the new note's `note_id`, `prime_id`, and title.
+
+<Tip>
+The Markdown converter supports headings, paragraphs, bullet and ordered lists, and inline
+`code`, **bold**, and *italic*. Tables, fenced code blocks, and blockquotes are not natively
+supported by the editor and are degraded gracefully (for example, code fences become monospace
+paragraphs). Plain notes round-trip cleanly.
+</Tip>
+
+## Search notes — `biji search`
+
+Runs a full-text search across your notes and prints matching titles, ids, and a content snippet.
+
+```bash
+biji search "quarterly planning"
+
+# Limit results and page through them
+biji search "投资" -n 15
+biji search "投资" -n 15 -p 2
+```
+
+<ParamField name="query" type="string" required>
+  Positional. The search query.
+</ParamField>
+<ParamField name="-n, --limit" type="string" default="10">
+  Maximum number of results to return.
+</ParamField>
+<ParamField name="-p, --page" type="string" default="1">
+  Page number, for paging through large result sets.
+</ParamField>
+<ParamField name="--json" type="boolean">
+  Print the raw API response instead of the formatted list.
+</ParamField>
+
+Each result line shows the note's `note_id` and, in brackets, its `prime_id` — copy either into
+`biji get` or `biji edit`.
+
+## Read a note — `biji get`
+
+Fetches a single note by `note_id` or `prime_id` and prints its title, metadata, and Markdown body.
+
+```bash
+biji get 1234567890
+
+# By prime_id (slug), body only — handy for piping
+biji get my-note-slug --content-only > note.md
+
+# Raw JSON for scripting
+biji get 1234567890 --json
+```
+
+<ParamField name="id" type="string" required>
+  Positional. The note's `note_id` (numeric) or `prime_id` (slug).
+</ParamField>
+<ParamField name="--content-only" type="boolean">
+  Print only the Markdown content, with no title or metadata header.
+</ParamField>
+<ParamField name="--json" type="boolean">
+  Print the raw API response.
+</ParamField>
+
+## Edit a note — `biji edit`
+
+Updates an existing note. With no flags it opens the current Markdown in your `$EDITOR`; flags let
+you append, replace, or set a title non-interactively. When run without a flag and content is piped
+on stdin, that piped text becomes the new body.
+
+```bash
+# Open $EDITOR with the note's current content
+biji edit 1234567890
+
+# Append a line without opening an editor
+biji edit 1234567890 --append "PS: follow up on Friday."
+
+# Replace the entire body from a file
+biji edit my-note-slug -f ./rewrite.md
+
+# Rename only
+biji edit 1234567890 -t "New title"
+
+# Pipe new content in
+echo "Fresh body" | biji edit 1234567890
+```
+
+<ParamField name="id" type="string" required>
+  Positional. The note's `note_id` (numeric) or `prime_id` (slug).
+</ParamField>
+<ParamField name="--append" type="string">
+  Append text to the end of the existing note body.
+</ParamField>
+<ParamField name="--replace" type="string">
+  Replace the entire note body with this text.
+</ParamField>
+<ParamField name="-f, --file" type="string">
+  Read replacement content from a file.
+</ParamField>
+<ParamField name="-t, --title" type="string">
+  Set a new title (can be combined with the content flags above).
+</ParamField>
+<ParamField name="--json" type="boolean">
+  Print the raw API response.
+</ParamField>
+
+<Note>
+`--append`, `--replace`, and `-f/--file` are mutually exclusive content sources — the first one
+present wins in that order. If none are given and nothing is piped in, the editor opens.
+</Note>
+
+## Delete a note — `biji rm`
+
+Moves one or more notes to the recycle bin. This is a soft delete: notes are restorable for about
+90 days (see below). The `delete` alias behaves identically.
+
+```bash
+biji rm 1234567890
+
+# Multiple notes at once
+biji rm 1234567890 my-note-slug 9876543210
+
+# Alias
+biji delete my-note-slug
+```
+
+<ParamField name="ids" type="string" required>
+  Positional, one or more. Each is a `note_id` or `prime_id`. Space-separate to delete several at once.
+</ParamField>
+<ParamField name="--json" type="boolean">
+  Print the raw API response for each id.
+</ParamField>
+
+If any id fails to delete, the command exits with a non-zero status.
+
+## Recycle bin — `biji recycle`
+
+Notes removed with `biji rm` land in the recycle bin (最近删除 / recently deleted), where they are
+kept for roughly 90 days. The `recycle` subcommands let you list, restore, and permanently remove them.
+
+### List — `biji recycle list`
+
+```bash
+biji recycle list
+
+# Larger page, second page
+biji recycle list -n 50 -p 2
+```
+
+<ParamField name="-n, --limit" type="string" default="20">
+  Page size.
+</ParamField>
+<ParamField name="-p, --page" type="string" default="1">
+  Page number.
+</ParamField>
+<ParamField name="--json" type="boolean">
+  Print the raw API response.
+</ParamField>
+
+### Restore — `biji recycle restore`
+
+Restores one or more notes out of the recycle bin by `prime_id`.
+
+```bash
+biji recycle restore my-note-slug
+biji recycle restore slug-one slug-two slug-three
+```
+
+<ParamField name="ids" type="string" required>
+  Positional, one or more `prime_id` values to restore.
+</ParamField>
+
+### Permanently delete — `biji recycle delete`
+
+Permanently removes specific notes from the recycle bin. This cannot be undone, so the command
+refuses to run without `-y/--yes`.
+
+```bash
+biji recycle delete my-note-slug -y
+biji recycle delete slug-one slug-two --yes
+```
+
+<ParamField name="ids" type="string" required>
+  Positional, one or more `prime_id` values to permanently delete.
+</ParamField>
+<ParamField name="-y, --yes" type="boolean">
+  Skip the confirmation prompt. Required — the command aborts without it.
+</ParamField>
+
+### Empty the bin — `biji recycle clear`
+
+Permanently empties the entire recycle bin in one call. Also gated behind `-y/--yes`.
+
+```bash
+biji recycle clear -y
+```
+
+<ParamField name="-y, --yes" type="boolean">
+  Skip the confirmation prompt. Required — the command aborts without it.
+</ParamField>
+
+<Warning>
+`biji recycle delete` and `biji recycle clear` are **irreversible**. Once a note is permanently
+deleted from the recycle bin it cannot be recovered from the CLI, the web UI, or the API. Prefer
+`biji rm` (soft delete) and let the 90-day window expire, and reserve `-y` for cases where you are
+certain.
+</Warning>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Knowledge bases" href="/docs/cli/knowledge-base">
+    Organize notes into 知识库 (knowledge-base) topics and move notes between them.
+  </Card>
+  <Card title="Queue" href="/docs/cli/queue">
+    Batch-import links and media in the background with the SQLite-backed queue daemon.
+  </Card>
+  <Card title="Authentication" href="/docs/authentication">
+    Log in, inspect token status, and use environment-variable overrides for CI.
+  </Card>
+  <Card title="MCP server" href="/docs/mcp-server">
+    Expose the same note operations to Claude Desktop and Claude Code as MCP tools.
+  </Card>
+</CardGroup>

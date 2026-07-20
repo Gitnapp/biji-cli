@@ -1,0 +1,214 @@
+---
+title: MCP Server
+description: Expose ~81 Get笔记 tools to Claude Desktop and Claude Code over stdio MCP.
+---
+
+`@biji/mcp` is a stdio [Model Context Protocol](https://modelcontextprotocol.io) server that exposes
+roughly 81 Get笔记 (biji.com, the AI note-taking app) tools to any MCP client. Point Claude Desktop or
+Claude Code at the built server and Claude can read, search, write, and organize your notes, chat with
+Yoda AI, upload media, and queue background batch jobs.
+
+## What it registers
+
+The server (`apps/mcp/src/index.ts`) registers each biji.com capability as an individual MCP tool. The
+tools group into the following categories.
+
+| Category | Example tools | What it covers |
+|---|---|---|
+| Auth & user | `set_auth`, `set_token`, `get_auth_status`, `get_user_info` | Set credentials, inspect token expiry, read the current user |
+| Notes | `list_notes`, `get_note`, `search_notes`, `create_note`, `create_note_stream` | List, fetch, search, and create notes (plain or AI-streamed) |
+| Recycle bin | `list_recycled_notes`, `restore_recycled_notes`, `clear_recycle_bin` | Browse and restore recently deleted notes |
+| Tags | `list_tags`, `search_tags`, `create_tag`, `add_note_tags`, `ai_generate_tags` | Manage tags, including AI tag generation |
+| Topics (笔记本, notebooks) | `list_topics`, `create_topic`, `edit_topic`, `list_topic_resources` | Topic CRUD and topic directory management |
+| Knowledge base (知识库) | `list_kb_managed_topics`, `add_note_to_kb`, `attach_notes_to_kb`, `move_resource_between_kb_topics`, `upload_local_media` | Manage the 知识库 sidebar topics and their resources |
+| Yoda AI chat | `yoda_create_chat`, `yoda_chat_stream`, `yoda_list_chats` | Semantic RAG chat over your notes |
+| AI writing & style | `ai_writing_stream`, `list_ai_writers`, `list_styles`, `create_style` | AI writing assistant and writing-style CRUD |
+| Canvas | `save_canvas`, `get_canvas_history` | Save and read AI-generated visual notes |
+| Export & share | `export_notes`, `wait_for_export_task`, `get_shared_note` | Async export to pdf/docx/md/mp3 and shared-note fetch |
+| Media & links | `ai_analyze_link`, `analyze_link_to_kb`, `recognize_weixin_blogger` | AI-parse URLs into notes and recognize WeChat bloggers |
+| Queue | `queue_add`, `queue_upload`, `queue_status`, `queue_retry` | Background batch link analysis and media upload |
+
+<Info>
+The server and the [`biji` CLI](/docs/installation) both build on the shared `@biji/client` SDK (~117
+biji.com endpoints), so they share one auth store and, for the queue, one background worker and database.
+</Info>
+
+## Prerequisites
+
+<Note>
+The server does not log in for you. It expects credentials in `~/.config/get-biji/auth.json`. The
+simplest way to create that file is to run `biji auth login` once with the CLI — see
+[Authentication](/docs/authentication). The server auto-loads this file at startup and refreshes the
+JWT before each call as long as a `refresh_token` is present.
+</Note>
+
+You also need `pnpm@10+` and `node@18+` to build the workspace.
+
+## Setup
+
+<Steps>
+<Step title="Install and build the workspace">
+From the repo root, install dependencies and build every package in topological order (client first,
+then the CLI and MCP server).
+
+```bash
+pnpm install
+pnpm -r build
+```
+
+This produces the server entry point at `apps/mcp/dist/index.js`. Note its absolute path — you will
+reference it in the client config.
+</Step>
+
+<Step title="Authenticate">
+If you have not already, log in with the CLI so `~/.config/get-biji/auth.json` exists.
+
+```bash
+biji auth login     # paste the JSON exported from your browser
+biji auth status    # confirm the token and refresh_token are valid
+```
+</Step>
+
+<Step title="Register the server with your MCP client">
+Add a `get-biji` entry pointing `node` at the absolute path to the built `index.js`. See the
+[Configuration](#configuration) section below for the exact JSON per client.
+</Step>
+
+<Step title="Restart and verify">
+Restart Claude Desktop (or reconnect the server in Claude Code) so it launches the process. On
+startup the server logs its auth state and `Get笔记 MCP server running on stdio` to stderr. Ask
+Claude to run a read-only tool such as `get_auth_status` or `get_notes_count` to confirm the
+connection.
+</Step>
+</Steps>
+
+## Configuration
+
+The server speaks stdio, so the client launches it with `command: node` and the built entry file as
+its single argument. Use an absolute path — relative paths will not resolve reliably.
+
+<Tabs>
+<Tab title="Claude Desktop">
+Edit `~/.config/Claude/claude_desktop_config.json` and add the server under `mcpServers`.
+
+```json
+{
+  "mcpServers": {
+    "get-biji": {
+      "command": "node",
+      "args": ["/absolute/path/to/get-biji-api/apps/mcp/dist/index.js"]
+    }
+  }
+}
+```
+</Tab>
+
+<Tab title="Claude Code">
+Register it with the CLI (recommended), then verify.
+
+```bash
+claude mcp add --scope user --transport stdio get-biji \
+  -- node /absolute/path/to/get-biji-api/apps/mcp/dist/index.js
+
+claude mcp list
+```
+
+This writes the equivalent stdio entry into `~/.claude.json`.
+</Tab>
+</Tabs>
+
+### Authenticating with environment variables
+
+Instead of (or in addition to) `auth.json`, you can pre-seed credentials in the server's `env` block.
+At startup the loader prefers environment variables, then the persisted file, then any tool-supplied
+values. This is useful for CI or headless deployments.
+
+```json
+{
+  "mcpServers": {
+    "get-biji": {
+      "command": "node",
+      "args": ["/absolute/path/to/get-biji-api/apps/mcp/dist/index.js"],
+      "env": {
+        "BIJI_TOKEN": "<jwt>",
+        "BIJI_REFRESH_TOKEN": "<refresh_token>",
+        "BIJI_TOKEN_EXPIRE_AT": "<timestamp>",
+        "BIJI_REFRESH_TOKEN_EXPIRE_AT": "<timestamp>"
+      }
+    }
+  }
+}
+```
+
+<Warning>
+A bare `BIJI_TOKEN` with no refresh token cannot auto-refresh and stops working when the ~30-minute JWT
+expires. Provide the full four-value set (or use `auth.json`) for long sessions.
+</Warning>
+
+## Queue tools
+
+The queue lets Claude submit many URLs or media files at once and return immediately while a local
+background worker processes them (concurrency 3, dedupe, retries with exponential backoff). The worker
+is a detached daemon shared with the CLI: it survives Claude Desktop closing, and you can inspect the
+same jobs later with `biji queue status`. Both sides read the same SQLite database at
+`~/.config/get-biji/queue/queue.db`.
+
+| Tool | Inputs | Description |
+|---|---|---|
+| `queue_add` | `urls[]`, `topic_alias?`, `prompt?`, `batch?`, `max_attempts?`, `force?` | Enqueue link-analysis jobs; returns ids immediately and auto-starts the worker |
+| `queue_upload` | `files[]`, `topic_alias?`, `prompt?`, `kind?`, `batch?`, `max_attempts?`, `force?` | Enqueue local audio/video upload-and-analyze jobs |
+| `queue_status` | none | Report worker liveness, per-status counts, and the log path |
+| `queue_list` | `status?`, `limit?`, `batch?` | List recent jobs, newest first (default limit 20) |
+| `queue_show` | `id` | Return the full record for one job (payload, result, error, timestamps) |
+| `queue_retry` | `ids?` or `all_failed?` | Re-queue failed jobs by id or all at once |
+| `queue_cancel` | `ids[]` | Cancel pending jobs (running jobs are not interrupted) |
+
+<Tip>
+Duplicate URLs or file paths in `pending`, `running`, or `done` status are skipped automatically. Pass
+`force: true` to enqueue anyway. For the full command-line surface of the same queue, see the
+[CLI queue reference](/docs/cli/queue).
+</Tip>
+
+## Auth tools
+
+If you cannot use `auth.json` or environment variables, the server also exposes tools to set
+credentials at runtime.
+
+| Tool | Inputs | Description |
+|---|---|---|
+| `set_auth` | `token`, `token_expire_at`, `refresh_token`, `refresh_token_expire_at` | Set the full credential set; enables auto-refresh and persists to `auth.json` |
+| `set_token` | `token` | Set only a Bearer JWT (no auto-refresh; expires in ~30 min) |
+| `get_auth_status` | none | Report current token expiry and whether auto-refresh is enabled |
+| `send_sms_code` | `phone`, `captcha_token?` | Send an SMS login code |
+| `login_with_sms` | `phone`, `smscode` | Log in with phone and SMS code |
+
+## Troubleshooting
+
+<AccordionGroup>
+<Accordion title="The server starts but every tool fails with auth errors">
+Confirm `~/.config/get-biji/auth.json` exists and is current by running `biji auth status`. If it is
+expired, run `biji auth login` again. On startup the server logs `no saved auth found` to stderr when
+it cannot load any credentials.
+</Accordion>
+
+<Accordion title="Claude does not see the get-biji tools">
+Verify the `args` path points at the built `apps/mcp/dist/index.js` (not `src/index.ts`) and is
+absolute. Re-run `pnpm -r build` if `dist/` is missing, then fully restart the client. In Claude Code,
+run `claude mcp list` to confirm the server is registered.
+</Accordion>
+
+<Accordion title="Queue jobs are enqueued but never complete">
+Call `queue_status` to check whether the worker is alive and inspect the log path it reports. The
+worker exits about 5 minutes after the queue drains and re-spawns on the next `queue_add`. You can also
+tail progress from the CLI with `biji queue logs -f`.
+</Accordion>
+</AccordionGroup>
+
+## Next steps
+
+<CardGroup cols={2}>
+<Card title="Authentication" href="/docs/authentication">How tokens, refresh, and auth.json work across the CLI, MCP server, and SDK.</Card>
+<Card title="Installation" href="/docs/installation">Install the workspace, build the packages, and link the biji CLI.</Card>
+<Card title="Queue (CLI)" href="/docs/cli/queue">The full command-line surface for the shared background queue.</Card>
+<Card title="Quickstart" href="/docs/quickstart">A guided first run across the toolkit.</Card>
+</CardGroup>

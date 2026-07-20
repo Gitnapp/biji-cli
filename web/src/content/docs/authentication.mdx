@@ -1,0 +1,243 @@
+---
+title: Authentication
+description: JWT + refresh_token auth, the auth.json store, environment overrides, and CLI auth commands.
+---
+
+biji.com (Get笔记, the AI note-taking app) has no public API, so this toolkit reuses the same
+credentials the web client holds: a short-lived JWT plus a long-lived `refresh_token`. This page
+explains how those tokens are stored, refreshed, and configured across the CLI, the MCP server,
+and the `@biji/client` SDK.
+
+## How auth works
+
+Every authenticated request carries a JWT (`token`) as a `Bearer` header. JWTs are short-lived, so
+the SDK also keeps a `refresh_token` (valid for roughly 90 days) and uses it to mint a fresh JWT
+before the old one expires — you log in once and stay logged in for months.
+
+The full credential set is four fields:
+
+| Field | Type | Meaning |
+|---|---|---|
+| `token` | string | The current JWT sent as `Authorization: Bearer …`. |
+| `token_expire_at` | number | Unix seconds when the JWT expires. |
+| `refresh_token` | string | Long-lived token used to obtain a new JWT (~90 days). |
+| `refresh_token_expire_at` | number | Unix seconds when the refresh token expires. |
+
+### Automatic JWT refresh
+
+The SDK calls `ensureFreshToken()` before requests. If the JWT is within 300 seconds (5 minutes) of
+`token_expire_at` and a `refresh_token` is present, it POSTs the refresh token to biji's auth-refresh
+endpoint, stores the returned JWT, and persists it through the active storage backend. Concurrent
+calls are de-duplicated, so a burst of requests triggers only a single refresh.
+
+<Note>
+Refresh only happens when both `token_expire_at` and a `refresh_token` are set. If you supply a bare
+JWT with no refresh token (see [Environment overrides](#environment-overrides)), it is used as-is and
+will simply stop working once it expires.
+</Note>
+
+## The auth store (auth.json)
+
+By default, credentials are persisted to:
+
+```text
+~/.config/get-biji/auth.json
+```
+
+The file is JSON with the four fields above, written with `0600` permissions (owner read/write only).
+`loadAuth()` reads it on startup; if the stored `refresh_token_expire_at` is already in the past,
+the file is treated as expired and you are considered logged out.
+
+<Warning>
+`auth.json` grants full read/write access to your Get笔记 account. Never commit it, paste it into
+issues or chats, or bake it into a Docker image. Keep the `0600` permissions, and rotate by
+re-running `biji auth login` if a token is ever exposed.
+</Warning>
+
+## Logging in
+
+Because there is no public OAuth flow, you copy the tokens out of a logged-in browser session and
+hand them to the CLI.
+
+<Steps>
+  <Step title="Sign in on the web">
+    Open [https://www.biji.com/note](https://www.biji.com/note) and sign in. Make sure you reach the
+    notes app itself, not the marketing page.
+  </Step>
+  <Step title="Export the tokens from DevTools">
+    Press F12, open the Console tab, paste this snippet, and press Enter. The `copy(...)` call places
+    the auth JSON on your clipboard.
+
+    ```ts
+    copy(JSON.stringify({
+      token: localStorage.getItem("token"),
+      token_expire_at: Number(localStorage.getItem("token_expire_at")),
+      refresh_token: localStorage.getItem("refresh_token"),
+      refresh_token_expire_at: Number(localStorage.getItem("refresh_token_expire_at"))
+    }))
+    ```
+  </Step>
+  <Step title="Hand the JSON to the CLI">
+    Pipe the clipboard straight into `biji auth login`, or run the command with no arguments to get a
+    guided tutorial and an interactive paste prompt.
+
+    <Tabs>
+      <Tab title="macOS">
+        ```bash
+        pbpaste | biji auth login
+        ```
+      </Tab>
+      <Tab title="Linux">
+        ```bash
+        xclip -selection clipboard -o | biji auth login
+        ```
+      </Tab>
+      <Tab title="WSL">
+        ```bash
+        powershell.exe Get-Clipboard | biji auth login
+        ```
+      </Tab>
+      <Tab title="Any OS">
+        ```bash
+        biji auth login --json '<paste the JSON here>'
+        ```
+      </Tab>
+    </Tabs>
+  </Step>
+</Steps>
+
+On success the CLI verifies the credentials with a user-info call and prints your `uid` plus the JWT
+and refresh-token lifetimes, for example:
+
+```text
+✓ Auth saved. uid=12345678, JWT 120min, refresh 89d.
+```
+
+### `biji auth login` reference
+
+Also available under the alias `biji auth set`. Input is resolved in order: the positional argument,
+then `--json`, then piped stdin. If none is provided, the command prints the tutorial and prompts you
+to paste the JSON interactively. The JSON must contain at least `token` and `refresh_token` or it is
+rejected.
+
+<ParamField name="json" type="string">
+Positional argument — the auth JSON string. Optional; falls back to `--json`, then stdin, then an
+interactive prompt.
+</ParamField>
+
+<ParamField name="--json" type="string">
+The auth JSON string, as an alternative to the positional argument or piped stdin.
+</ParamField>
+
+## Checking status
+
+`biji auth status` prints a human-readable summary — a truncated token preview, minutes until the JWT
+expires, and days until the refresh token expires. An expired JWT is annotated as auto-refreshable;
+an expired refresh token means you must log in again.
+
+```bash
+biji auth status
+```
+
+```text
+Token: eyJhbGciOiJIUzI1NiIsInR5c...
+JWT expires in: 118 min
+Refresh token expires in: 89 days
+```
+
+To inspect the exact stored credentials (for debugging), use `biji auth show`, which prints the raw
+`auth.json` contents as formatted JSON.
+
+```bash
+biji auth show
+```
+
+<Warning>
+`biji auth show` prints your real tokens to the terminal. Do not paste its output into bug reports,
+screen shares, or logs.
+</Warning>
+
+## Environment overrides
+
+For CI pipelines and headless servers, you can skip `auth.json` entirely and supply credentials
+through environment variables. When present, they take precedence over the file and are never written
+to disk.
+
+| Variable | Purpose |
+|---|---|
+| `BIJI_TOKEN` | The JWT. Setting this alone uses the token as-is with no auto-refresh. |
+| `BIJI_REFRESH_TOKEN` | The refresh token. Enables auto-refresh when paired with `BIJI_TOKEN`. |
+| `BIJI_TOKEN_EXPIRE_AT` | Optional Unix seconds for JWT expiry (defaults to 0). |
+| `BIJI_REFRESH_TOKEN_EXPIRE_AT` | Optional Unix seconds for refresh-token expiry (defaults to 0). |
+
+Behavior depends on which variables are set:
+
+- **Both `BIJI_TOKEN` and `BIJI_REFRESH_TOKEN`** — a full credential set is loaded, and the JWT
+  auto-refreshes just like the file-based flow (supply the expiry variables so refresh timing is
+  accurate).
+- **`BIJI_TOKEN` only** — a static-JWT mode with no refresh token. The token is used until it
+  expires, so it must be reasonably fresh; best for short-lived CI jobs.
+
+<Info>
+Environment variables are ideal for the MCP server or the SDK running on a server where writing to a
+shared home directory is undesirable. See [MCP server](/docs/mcp-server) for wiring it into Claude.
+</Info>
+
+## Pluggable auth storage
+
+Where credentials live is decided by an injectable `AuthStorage` strategy. The interface is small —
+`load()` returns the stored `AuthInfo` or `null`, and `save()` persists it — and two implementations
+ship in `@biji/client`.
+
+| Implementation | Persistence | Use case |
+|---|---|---|
+| `FileAuthStorage` | `~/.config/get-biji/auth.json` (mode `0600`) | CLI, stdio MCP, desktop — the default. |
+| `MemoryAuthStorage` | In-process only, lost on exit | HTTP MCP servers, tests, multi-tenant adapters. |
+
+Select a backend with `setAuthStorage()`, then call `loadAuth()` to populate state from that backend
+(or from the environment variables above). Call `setAuthStorage()` before `loadAuth()`.
+
+```ts
+import {
+  setAuthStorage,
+  FileAuthStorage,
+  MemoryAuthStorage,
+  loadAuth,
+} from "@biji/client";
+
+// Default: persist to ~/.config/get-biji/auth.json
+setAuthStorage(new FileAuthStorage());
+
+// Or keep credentials only in memory (e.g. an HTTP server)
+setAuthStorage(new MemoryAuthStorage());
+
+// Populate token state from the chosen storage / env vars
+loadAuth();
+```
+
+`FileAuthStorage` also accepts a custom path if you need to store credentials somewhere other than
+the default location:
+
+```ts
+setAuthStorage(new FileAuthStorage("/etc/get-biji/auth.json"));
+```
+
+<Tip>
+Because `AuthStorage` is just an interface, you can supply your own backend — for example a
+Redis-backed, per-tenant adapter for a multi-user deployment — and inject it the same way with
+`setAuthStorage()`.
+</Tip>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" href="/docs/quickstart">
+    Install the CLI, log in, and write your first note in a few minutes.
+  </Card>
+  <Card title="@biji/client SDK" href="/docs/sdk">
+    Call biji endpoints directly from Node.js, with the same auth and streaming primitives.
+  </Card>
+  <Card title="MCP server" href="/docs/mcp-server">
+    Point Claude at your Get笔记 workspace once auth.json is in place.
+  </Card>
+</CardGroup>

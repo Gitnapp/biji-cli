@@ -1,0 +1,205 @@
+---
+title: Yoda Chat
+description: Chat with biji's Yoda AI — semantic RAG over all your notes — from the terminal.
+---
+
+`biji chat` talks to Yoda, biji's built-in AI assistant, which runs retrieval-augmented generation (RAG) over your Get笔记 (biji.com) notes and streams the answer back to your terminal. Ask a one-off question, follow up inside an existing session, or drop into an interactive REPL for a full conversation.
+
+## How it works
+
+Yoda does semantic search across your notes, grounds its reply in what it retrieves, and streams the response token by token over Server-Sent Events (SSE) — you see the answer form as it is written, not after a long pause.
+
+Every exchange belongs to a **session**. By default the CLI reuses your most recent session, and each new question is threaded onto that session's last answer via its parent message id. That gives you multi-turn memory even across separate one-shot commands: a bare `biji chat "..."` continues where your last question left off, rather than starting cold.
+
+<Note>
+By default Yoda searches only your notes. Web search and the 得到 (Dedao, a knowledge platform from biji's parent company) knowledge base are off unless you opt in with `--web` or `--dedao`.
+</Note>
+
+## Ask a one-off question
+
+Pass your question as a quoted argument. The answer streams live to stdout, and the session id is printed at the end so you can resume the thread later.
+
+```bash
+biji chat "总结我最近关于商业的笔记"
+```
+
+The command prints a short status line to stderr, streams the answer to stdout, then closes with the session id:
+
+```text
+(reusing recent session yc_9f2a1c8e)
+根据你的笔记，最近的商业主题集中在……
+（流式输出的完整回答）
+
+[session: yc_9f2a1c8e]
+```
+
+<Tip>
+Status lines like `(reusing recent session ...)` and `(new session ...)` go to **stderr**, while the answer goes to **stdout**. So `biji chat "..." > answer.txt` captures only Yoda's reply, and the trailing `[session: ...]` id can be copied straight into a `-s` follow-up.
+</Tip>
+
+## Sessions
+
+Sessions persist server-side, so you can list them, inspect their full history, start fresh ones, or resume any of them by id.
+
+### List recent sessions
+
+Shows each session's title, id, last-updated time, and a short preview of its most recent answer.
+
+```bash
+biji chat list
+biji chat list -n 30
+```
+
+`-n` (`--limit`) caps how many sessions are returned and defaults to `10`.
+
+### Show a session's history
+
+Prints the full message history of one session — every user and assistant turn with its role and timestamp.
+
+```bash
+biji chat show yc_9f2a1c8e
+biji chat show yc_9f2a1c8e -n 100
+```
+
+`-n` (`--limit`) caps how many messages are returned and defaults to `50`.
+
+<Warning>
+The short flag `-n` means different things depending on the command. On `biji chat` itself, `-n` is `--new` (start a fresh session). On the `list` and `show` subcommands, `-n` is `--limit`. Same letter, different meaning.
+</Warning>
+
+### Start a new session
+
+Force a brand-new session instead of reusing your most recent one.
+
+```bash
+biji chat -n "新主题：日本央行加息的影响"
+```
+
+With `-n` (`--new`), the status line reads `(new session <id>)` and the question starts with no prior context.
+
+### Follow up in a specific session
+
+Target a session by id — copied from `biji chat list` or from a previous `[session: ...]` line — and your question is threaded onto that session's last answer.
+
+```bash
+biji chat -s yc_9f2a1c8e "再展开一下 AI 相关的投资标的"
+```
+
+`-s` (`--session`) always wins over the default "reuse most recent" behavior and over `-n`.
+
+## Interactive REPL
+
+Run `biji chat` with no message in a terminal to open a multi-turn REPL. Each answer streams under a `yoda>` prompt, and context carries across turns automatically.
+
+```bash
+biji chat
+```
+
+A typical session looks like this:
+
+```text
+💬 chat session: yc_9f2a1c8e
+(type /quit or Ctrl-D to exit, /reset to clear context)
+
+you> 我最近在关注什么主题？
+yoda> 从你的笔记来看，最近的重点是……
+
+you> /reset
+(context cleared)
+
+you> /quit
+```
+
+The REPL understands a small set of slash commands:
+
+| Command | Action |
+|---|---|
+| `/quit` | Exit the REPL. |
+| `/exit` | Exit the REPL (alias of `/quit`). |
+| `/reset` | Clear the conversation context by resetting the parent message id, so the next question starts fresh. |
+| `Ctrl-D` | Exit the REPL (end of input). |
+
+<Note>
+The REPL reuses your most recent session by default, just like the one-off form. Combine it with `-n` to start a fresh session or `-s <id>` to resume a specific one — for example `biji chat -s yc_9f2a1c8e`.
+</Note>
+
+## Scope: notes, web, and Dedao
+
+By default Yoda answers only from your notes. These flags widen or narrow that scope and can be combined.
+
+```bash
+biji chat --web "结合最新新闻，评估这条笔记的观点"
+biji chat --dedao "从得到课程的角度补充这个主题"
+biji chat --no-notes --web "只用网络搜索来回答，不用我的笔记"
+```
+
+- `--no-notes` turns off note RAG (your notes are no longer searched).
+- `--web` enables web search alongside whatever else is on.
+- `--dedao` enables the 得到 (Dedao) knowledge base.
+
+<Info>
+The scope flags apply to the current invocation, including inside the REPL. If you pass `--web` when launching `biji chat`, every question in that REPL session runs with web search on.
+</Info>
+
+## Pipe a question from stdin
+
+When you give no message argument and stdin is not a terminal, the piped text is used as the question. This makes `biji chat` easy to script or chain from other commands.
+
+```bash
+echo "总结这周的笔记" | biji chat
+cat question.txt | biji chat
+```
+
+<Warning>
+With no message argument, `biji chat` opens the REPL only when attached to a terminal. In a non-interactive context (a script or pipe) with no piped input, it prints `No message provided.` and exits with a non-zero status.
+</Warning>
+
+## Options
+
+These flags apply to the top-level `biji chat` command (the one-off and REPL forms).
+
+| Flag | Type | Description |
+|---|---|---|
+| `[message]` | string | Positional. The question to ask. Omit it to read from stdin or open the REPL. |
+| `-s`, `--session <id>` | string | Use a specific session id. Default: reuse the most recent session. |
+| `-n`, `--new` | boolean | Force-create a new session instead of reusing the most recent. |
+| `--no-notes` | boolean | Disable note RAG; Yoda no longer searches your notes. |
+| `--web` | boolean | Enable web search. |
+| `--dedao` | boolean | Enable the 得到 (Dedao) knowledge base. |
+
+<ParamField name="message" type="string">
+Positional argument. The question to ask Yoda. If omitted, the command reads a piped question from stdin, or opens the interactive REPL when run in a terminal.
+</ParamField>
+
+<ParamField name="--session" type="string">
+Alias `-s`. Use a specific session id (from `biji chat list` or a prior `[session: ...]` line). Overrides the default "reuse most recent" behavior.
+</ParamField>
+
+<ParamField name="--new" type="boolean">
+Alias `-n`. Force-create a fresh session instead of reusing the most recent one.
+</ParamField>
+
+<ParamField name="--no-notes" type="boolean">
+Turn off note RAG. Your notes are searched by default; pass this to answer without them (usually together with `--web`).
+</ParamField>
+
+<ParamField name="--web" type="boolean">
+Enable web search in addition to whatever other scope is active.
+</ParamField>
+
+<ParamField name="--dedao" type="boolean">
+Enable the 得到 (Dedao) knowledge base as an additional retrieval source.
+</ParamField>
+
+The `list` and `show` subcommands each take their own `-n` (`--limit`) option — default `10` for `list`, `50` for `show`.
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Notes" href="/docs/cli/notes">
+    Write, search, edit, and delete the notes Yoda searches over.
+  </Card>
+  <Card title="Knowledge Bases" href="/docs/cli/knowledge-base">
+    Organize notes into 知识库 (knowledge base) topics for more focused retrieval.
+  </Card>
+</CardGroup>
