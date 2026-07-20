@@ -20,7 +20,7 @@ export function AuroraBackground({
   return (
     <div
       className={cn(
-        "relative flex flex-col items-center justify-center bg-background text-foreground",
+        "relative flex flex-col items-center bg-background text-foreground",
         className,
       )}
       {...props}
