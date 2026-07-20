@@ -1,0 +1,7 @@
+# Standalone workspace root for the web app so it installs independently of the
+# monorepo (which only globs apps/* and packages/*). Keeps the Docker build simple.
+packages: []
+allowBuilds:
+  esbuild: true
+onlyBuiltDependencies:
+  - esbuild

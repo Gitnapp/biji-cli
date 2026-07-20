@@ -1,0 +1,53 @@
+---
+title: Introduction
+description: An unofficial client suite for biji.com (Get笔记) — a shared TypeScript SDK, a full-featured CLI, and an MCP server for Claude.
+---
+
+**get-biji-api** is a community-built toolkit for [biji.com](https://biji.com) (Get笔记),
+the AI note-taking product from 得到 / 罗辑思维. It packages everything you need to script,
+automate, and integrate your Get笔记 workspace from the terminal, from Node.js, or from an
+AI agent.
+
+<Note>
+This project is **unofficial** and not affiliated with or endorsed by biji.com. Every endpoint
+was reverse-engineered from the web client. See [Reverse Engineering](/docs/reverse-engineering)
+for how new endpoints are captured.
+</Note>
+
+## What's in the box
+
+<CardGroup cols={2}>
+  <Card title="@biji/client — SDK" href="/docs/sdk">
+    A shared TypeScript SDK wrapping ~117 endpoints, with JWT auto-refresh, dual-mode SSE
+    streaming, and pluggable auth storage.
+  </Card>
+  <Card title="@biji/cli — CLI" href="/docs/cli/notes">
+    A full-featured terminal client: write, search, edit, upload, export, and chat with your
+    notes — all from <code>biji</code>.
+  </Card>
+  <Card title="@biji/mcp — MCP server" href="/docs/mcp-server">
+    A stdio MCP server exposing ~81 tools so Claude Desktop / Claude Code can read and write
+    your notes directly.
+  </Card>
+  <Card title="@biji/queue — Queue" href="/docs/cli/queue">
+    A SQLite-backed background daemon for batch link parsing and media uploads, with dedup and
+    automatic retries.
+  </Card>
+</CardGroup>
+
+## Why it exists
+
+biji.com has no public API. This monorepo centralizes the reverse-engineered endpoints in one
+SDK so the CLI, the MCP server, and your own scripts all share the same battle-tested HTTP layer,
+auth handling, and streaming primitives.
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" href="/docs/quickstart">
+    Install the CLI, log in, and write your first note in under five minutes.
+  </Card>
+  <Card title="Architecture" href="/docs/architecture">
+    How the SDK, CLI, MCP server, and queue fit together.
+  </Card>
+</CardGroup>

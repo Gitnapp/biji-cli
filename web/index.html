@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en" class="dark" style="color-scheme: dark">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>get-biji-api — The unofficial Get笔记 toolkit · SDK · CLI · MCP</title>
+    <meta
+      name="description"
+      content="get-biji-api is an unofficial client suite for biji.com (Get笔记): a shared TypeScript SDK, a full-featured CLI, and an MCP server for Claude — 117 endpoints, 81 MCP tools, JWT auto-refresh, SSE streaming, and a background batch queue."
+    />
+    <meta property="og:title" content="get-biji-api — The unofficial Get笔记 toolkit" />
+    <meta
+      property="og:description"
+      content="SDK + CLI + MCP server for Get笔记 (biji.com). 117 endpoints, 81 MCP tools, streaming, and a background queue."
+    />
+    <meta property="og:type" content="website" />
+    <meta name="theme-color" content="#0a0a0b" />
+    <script>
+      // Apply persisted theme before paint to avoid flash.
+      (function () {
+        try {
+          var stored = localStorage.getItem("theme")
+          var systemDark = window.matchMedia("(prefers-color-scheme: dark)").matches
+          var dark = stored ? stored === "dark" : true // dark by default
+          var el = document.documentElement
+          el.classList.toggle("dark", dark)
+          el.style.colorScheme = dark ? "dark" : "light"
+        } catch (e) {}
+      })()
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
