@@ -1,0 +1,232 @@
+---
+title: Architecture
+description: How the SDK, CLI, MCP server, and queue fit together in the monorepo.
+---
+
+get-biji-api is a pnpm workspace that splits one reverse-engineered API surface into four packages.
+Everything funnels through a single shared SDK, so the CLI, the MCP server, your own scripts, and the
+background queue all speak to biji.com (Get笔记, the AI note-taking product) through the same HTTP layer,
+the same auth handling, and the same streaming primitives.
+
+## Monorepo layout
+
+The workspace globs are `apps/*` and `packages/*` (see `pnpm-workspace.yaml`). Applications live under
+`apps/`; reusable libraries live under `packages/`.
+
+```text
+get-biji-api/
+├── apps/
+│   ├── cli/            @biji/cli     → biji            (commander)
+│   └── mcp/            @biji/mcp     → get-biji-mcp    (MCP stdio server)
+├── packages/
+│   ├── biji-client/    @biji/client  → shared SDK      (HTTP + auth + SSE)
+│   └── biji-queue/     @biji/queue   → job queue       (SQLite daemon)
+├── scripts/capture/    Playwright endpoint-capture tooling
+├── pnpm-workspace.yaml
+└── tsconfig.base.json
+```
+
+<Info>
+There is no public biji.com API. Every endpoint in `@biji/client` was captured from the web client
+and mapped to an SDK function. See [Reverse Engineering](/docs/reverse-engineering) for the workflow.
+</Info>
+
+## Packages
+
+Two libraries and two applications, wired together with pnpm `workspace:*` links so a local change to
+the SDK is picked up everywhere without a publish step.
+
+| Package | Directory | Binary / entry | Depends on | Responsibility |
+|---|---|---|---|---|
+| `@biji/client` | `packages/biji-client` | library | — | ~117 endpoint functions, JWT auto-refresh, SSE streaming, pluggable auth storage. |
+| `@biji/queue` | `packages/biji-queue` | `biji-queue-worker` | `@biji/client`, `better-sqlite3` | SQLite-backed job store plus a background worker daemon for batch link parsing and media upload. |
+| `@biji/cli` | `apps/cli` | `biji` | `@biji/client`, `@biji/queue`, `commander` | Full-featured terminal client. |
+| `@biji/mcp` | `apps/mcp` | `get-biji-mcp` | `@biji/client`, `@biji/queue`, `@modelcontextprotocol/sdk`, `zod` | stdio MCP server exposing ~81 tools to Claude. |
+
+Note that `@biji/client` has **no runtime dependencies** of its own — it relies only on the Node 18+
+built-in `fetch` and `ReadableStream`, which keeps the SDK light enough to embed anywhere.
+
+## Dependency graph
+
+Both applications depend on the SDK, and both also depend on the queue; the queue in turn depends on the
+SDK. The SDK sits at the bottom of the graph and knows nothing about its consumers.
+
+```text
+        ┌──────────────┐              ┌──────────────┐
+        │  @biji/cli   │              │  @biji/mcp   │
+        │    (biji)    │              │ get-biji-mcp │
+        └──────┬───────┘              └──────┬───────┘
+               │       workspace:*           │
+        ┌──────┴───────────┬─────────────────┴──────┐
+        ▼                  ▼                         ▼
+ ┌──────────────┐   ┌──────────────┐        ┌──────────────┐
+ │ @biji/queue  │──▶│ @biji/client │◀───────┤ (direct SDK  │
+ │ SQLite daemon│   │ SDK · auth   │        │  calls from  │
+ │  queue.db    │   │  ~117 EPs    │        │  cli / mcp)  │
+ └──────────────┘   └──────┬───────┘        └──────────────┘
+                           │  request() / requestSSE()
+                           ▼
+    ┌───────────────────────────────────────────────────┐
+    │  biji hosts:  NOTES_API · LEGACY_API ·             │
+    │               OPEN_API · YODA_API                  │
+    └───────────────────────────────────────────────────┘
+```
+
+Because the CLI and the MCP server share the queue package, they also share a single background daemon
+and one on-disk database — enqueue work from either side and it runs in the same place.
+
+## Data flow
+
+A command never talks to biji.com directly. It calls a typed SDK function, which routes through one of
+two primitives in `@biji/client`:
+
+- `request(baseUrl, path, options)` — the JSON workhorse for ordinary REST calls. It calls
+  `ensureFreshToken()`, builds headers (`Content-Type`, `X-Appid: 3`, and the `Authorization` bearer),
+  serializes the body, and parses the response.
+- `requestSSE(baseUrl, path, body, { onChunk })` — the streaming path for AI endpoints. It reads the
+  Server-Sent Events body incrementally and decodes biji's `msg_type` envelope, extracting streamed
+  content plus trailing metadata such as `note_id`, `title`, and `tags`.
+
+The two primitives are what make one codebase serve two very different consumers. `requestSSE` can
+buffer the whole stream and return it (how the MCP server wants it) or fire the `onChunk` callback for
+each delta so the CLI can render tokens live — same function, both behaviors.
+
+Every request targets one of four host constants declared in `packages/biji-client/src/client.ts`:
+
+| Constant | Host | Typical use |
+|---|---|---|
+| `NOTES_API` | `notes-api.biji.com` | Notes, tags, topics, knowledge-base management. |
+| `LEGACY_API` | `get-notes.luojilab.com` | Recycle bin, export tasks, local media upload tokens (`/voicenotes/...`). |
+| `OPEN_API` | `knowledge-api.trytalks.com` | Knowledge-book / open endpoints. |
+| `YODA_API` | `notes-api.biji.com` | Yoda AI chat (points at the same host as `NOTES_API`). |
+
+<Note>
+The same endpoint sometimes answers on more than one host. The SDK pins each function to the host that
+was actually observed in capture, because routing policy can otherwise return sporadic 4xx errors.
+</Note>
+
+## Authentication and pluggable storage
+
+biji.com uses a short-lived JWT plus a long-lived `refresh_token` (~90 days). The SDK holds the token in
+module state and refreshes it transparently: `ensureFreshToken()` runs before every request and, when the
+JWT is within 5 minutes of expiry, POSTs the refresh token to the account endpoint. A single in-flight
+refresh is shared across concurrent callers, so a burst of requests triggers at most one refresh.
+
+Where that token is persisted is decoupled behind the `AuthStorage` interface (`load()` / `save()`), so
+the same SDK works for a desktop CLI, a stdio MCP server, and a multi-tenant HTTP deployment.
+
+| Implementation | Backing store | Best for |
+|---|---|---|
+| `FileAuthStorage` (default) | `~/.config/get-biji/auth.json` (written mode `0600`) | CLI and desktop / stdio MCP — one user per machine. |
+| `MemoryAuthStorage` | Process memory only | Ephemeral servers and tests. |
+| Custom | Anything you implement (e.g. Redis) | Multi-tenant HTTP MCP or fly.io deployments. |
+
+Inject your own with `setAuthStorage(new MyStorage())` before calling `loadAuth()`.
+
+```ts
+import { setAuthStorage, MemoryAuthStorage, loadAuth } from "@biji/client";
+
+setAuthStorage(new MemoryAuthStorage()); // swap File for Memory on a server
+loadAuth();                              // reads env vars or the storage backend
+```
+
+`loadAuth()` also honors the `BIJI_TOKEN` and `BIJI_REFRESH_TOKEN` environment variables, which override
+any stored file — convenient for CI and headless servers. Full details are in
+[Authentication](/docs/authentication).
+
+## Asynchronous operations
+
+Export, media upload, and audio transcription (ASR) are not single calls. Each follows a three-step
+pattern — create, poll or upload, then download — because a lone POST is never enough.
+
+<Steps>
+  <Step title="Create">
+    POST to kick off the job. Export returns a `task_id`; media upload returns a presigned OSS token
+    (`createExportTask`, `getLocalAudioUploadToken` / `getLocalVideoUploadToken`).
+  </Step>
+  <Step title="Poll or transfer">
+    For export, poll the task with `waitForExportTask` until it reports success. For upload, PUT the raw
+    bytes to the presigned OSS URL with `uploadMediaToOss`, then trigger the AI/ASR stream with
+    `aiAnalyzeLocalAudio` / `aiAnalyzeLocalVideo`.
+  </Step>
+  <Step title="Download or read">
+    Read the final artifact. Export exposes a presigned `access_url` on the finished task; upload returns
+    the created `note_id` once the ASR stream completes.
+  </Step>
+</Steps>
+
+The queue's upload runner (`packages/biji-queue/src/runners.ts`) is a concrete implementation of the
+upload variant: token → OSS PUT → SSE analyze, all in one job.
+
+## The background queue
+
+`@biji/queue` turns fire-and-forget batch work into durable jobs. Submitting is instant; a detached
+worker claims and runs jobs at a concurrency of 3, retrying transient failures on its own. State lives in
+one SQLite database (WAL mode, safe for concurrent multi-process access) under the shared config root.
+
+| File | Path | Purpose |
+|---|---|---|
+| Database | `~/.config/get-biji/queue/queue.db` | Every job row — status, attempts, payload, result. |
+| Log | `~/.config/get-biji/queue/worker.log` | Append-only worker log (`biji queue logs` tails it). |
+| PID | `~/.config/get-biji/queue/worker.pid` | Liveness check for the current daemon. |
+
+The daemon is shared across processes: the first `queue add` from either the CLI or an MCP tool forks it,
+and it keeps running (idling out after 5 minutes of no work) even after the client that spawned it exits.
+That is why Claude can enqueue 100 URLs in a conversation, return immediately, and let the work finish in
+the background. See [Batch Queue](/docs/cli/queue) for the full command and fault-tolerance reference.
+
+## Build order
+
+`pnpm -r build` compiles every package in topological order, so dependencies build before their
+consumers: `@biji/client` first, then `@biji/queue`, then `@biji/cli` and `@biji/mcp`.
+
+<Tabs>
+  <Tab title="pnpm">
+```bash
+pnpm install
+pnpm -r build          # client → queue → cli/mcp
+```
+  </Tab>
+  <Tab title="dev (watch)">
+```bash
+pnpm dev:cli           # tsx watch apps/cli/src/cli.ts
+pnpm dev:mcp           # tsx watch apps/mcp/src/index.ts
+```
+  </Tab>
+</Tabs>
+
+<Tip>
+Each package builds with plain `tsc`. Only `better-sqlite3` and `esbuild` are allow-listed for native
+build scripts (`onlyBuiltDependencies` in the root `package.json`), which keeps `pnpm install` fast and
+predictable.
+</Tip>
+
+## Tech stack
+
+| Layer | Choice |
+|---|---|
+| Language | TypeScript 5.9 — strict, ES2022 target, Node16 module resolution. |
+| Runtime | Node 18+ (built-in `fetch` and `ReadableStream`, no HTTP client dependency). |
+| Package manager | pnpm 10 workspaces. |
+| Module format | CommonJS. Source uses `import "./file.js"` specifiers even for `.ts` files, for MCP/Node compatibility. |
+| CLI framework | `commander`. |
+| MCP | `@modelcontextprotocol/sdk`, with `zod` for tool input schemas. |
+| Queue storage | `better-sqlite3` (SQLite, WAL mode). |
+| Capture tooling | Playwright (in `scripts/capture`). |
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="SDK · @biji/client" href="/docs/sdk">
+    Use the shared SDK directly in your own Node.js project.
+  </Card>
+  <Card title="MCP Server" href="/docs/mcp-server">
+    Wire the ~81 MCP tools into Claude Desktop or Claude Code.
+  </Card>
+  <Card title="Batch Queue" href="/docs/cli/queue">
+    The full command and fault-tolerance reference for the background daemon.
+  </Card>
+  <Card title="Reverse Engineering" href="/docs/reverse-engineering">
+    How new endpoints are captured and mapped into the SDK.
+  </Card>
+</CardGroup>

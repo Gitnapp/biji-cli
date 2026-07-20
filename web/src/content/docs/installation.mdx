@@ -1,0 +1,186 @@
+---
+title: Installation
+description: Requirements, monorepo build order, dev mode, and linking the biji CLI.
+---
+
+get-biji-api is a pnpm workspace monorepo. This page covers the prerequisites, how to install
+and build every package in the correct order, how to run either app straight from TypeScript
+source in development, and how to link the `biji` binary so it is on your PATH.
+
+## Requirements
+
+The whole toolkit is plain TypeScript compiled to CommonJS, so the runtime footprint is small.
+
+| Requirement | Version | Why |
+| --- | --- | --- |
+| Node.js | `>=18.0.0` | Uses the built-in global `fetch` and `ReadableStream` (no polyfills). |
+| pnpm | `10.x` | The repo is a pnpm workspace pinned to `pnpm@10.31.0` and uses the `workspace:*` protocol. |
+
+<Note>
+The workspace is pinned to `pnpm@10.31.0` via the root `packageManager` field, and every package
+declares `engines.node >= 18.0.0`. Because the packages reference each other with `workspace:*`,
+installing with npm or yarn will not resolve the internal links correctly. Use pnpm.
+</Note>
+
+## Repository layout
+
+Two publishable apps live under `apps/`, and two shared libraries live under `packages/`. The
+`pnpm-workspace.yaml` globs pick up both directories.
+
+```text
+.
+├── apps/
+│   ├── cli/          @biji/cli    terminal CLI (biji)
+│   └── mcp/          @biji/mcp    stdio MCP server (get-biji-mcp)
+├── packages/
+│   ├── biji-client/  @biji/client shared SDK: HTTP + JWT refresh + SSE
+│   └── biji-queue/   @biji/queue  SQLite-backed job queue + worker
+├── pnpm-workspace.yaml
+└── package.json
+```
+
+The `pnpm-workspace.yaml` is intentionally minimal:
+
+```text
+packages:
+  - apps/*
+  - packages/*
+```
+
+## Packages
+
+Four workspace packages make up the suite. The two libraries carry the shared logic; the two apps
+are thin front ends over them.
+
+| Package | Directory | Binary | Role |
+| --- | --- | --- | --- |
+| `@biji/client` | `packages/biji-client` | — | Shared SDK: HTTP layer, JWT auto-refresh, and dual-mode SSE streaming. No workspace dependencies. |
+| `@biji/queue` | `packages/biji-queue` | `biji-queue-worker` | SQLite-backed job queue and background worker. Depends on `@biji/client`. |
+| `@biji/cli` | `apps/cli` | `biji` | Terminal client built on `commander`. Depends on `@biji/client` and `@biji/queue`. |
+| `@biji/mcp` | `apps/mcp` | `get-biji-mcp` | stdio MCP server. Depends on `@biji/client` and `@biji/queue`. |
+
+## Install and build
+
+Install once from the repo root, then run a recursive build. `pnpm -r build` walks the workspace
+in topological order, so dependencies compile before their consumers automatically.
+
+<Steps>
+  <Step title="Install dependencies">
+    ```bash
+    pnpm install
+    ```
+    Run this from the repository root. It resolves every workspace package and links the
+    `workspace:*` dependencies between them.
+  </Step>
+  <Step title="Build every package">
+    ```bash
+    pnpm -r build
+    ```
+    Each package's `build` script is `tsc`, emitting compiled output to its own `dist/`.
+  </Step>
+</Steps>
+
+Because of the dependency graph, the topological order is fixed:
+
+1. `@biji/client` builds first (it has no workspace dependencies).
+2. `@biji/queue` builds next (it depends on `@biji/client`).
+3. `@biji/cli` and `@biji/mcp` build last (they depend on both libraries).
+
+<Info>
+`@biji/queue` pulls in `better-sqlite3`, a native module. pnpm 10 blocks dependency build scripts
+by default, so the root `package.json` pre-approves them via `onlyBuiltDependencies`
+(`better-sqlite3` and `esbuild`). They are compiled during `pnpm install` without any extra prompt.
+</Info>
+
+<Tip>
+To wipe all compiled output and rebuild from scratch, run `pnpm clean` (which runs
+`pnpm -r exec rm -rf dist`) followed by `pnpm -r build`.
+</Tip>
+
+## Development mode
+
+For iterating on the CLI or the MCP server you can skip the build step entirely and run the
+TypeScript source directly with `tsx`. Two root scripts wrap the per-app dev commands.
+
+<CodeGroup>
+```bash CLI
+pnpm dev:cli
+```
+
+```bash MCP
+pnpm dev:mcp
+```
+</CodeGroup>
+
+Under the hood these delegate to the app packages:
+
+| Root script | Runs | Executes |
+| --- | --- | --- |
+| `pnpm dev:cli` | `pnpm --filter @biji/cli dev` | `tsx src/cli.ts` |
+| `pnpm dev:mcp` | `pnpm --filter @biji/mcp dev` | `tsx src/index.ts` |
+
+<Note>
+Dev mode runs straight from `.ts` source, so you do not need a prior `pnpm -r build`. The shared
+libraries (`@biji/client`, `@biji/queue`) are resolved through the workspace, so changes in those
+packages are picked up on the next run.
+</Note>
+
+## Linking the CLI
+
+After building, the CLI can be invoked directly through its compiled entry point, or linked so the
+`biji` binary is available globally. The `@biji/cli` package declares `bin.biji`, which `npm link`
+installs onto your PATH.
+
+<Steps>
+  <Step title="Link the CLI package">
+    ```bash
+    npm link --workspace @biji/cli
+    ```
+    This puts a `biji` symlink on your PATH pointing at `apps/cli/dist/cli.js`.
+  </Step>
+  <Step title="Verify it works">
+    ```bash
+    biji auth status
+    ```
+    If the binary resolves, you are ready to authenticate. See
+    [Authentication](/docs/authentication) for the login flow.
+  </Step>
+</Steps>
+
+If you would rather not link a global binary, call the built entry point directly. Both forms take
+the same commands and flags.
+
+<Tabs>
+  <Tab title="Linked (biji)">
+    ```bash
+    biji search "keyword" -n 15
+    ```
+  </Tab>
+  <Tab title="Direct (node)">
+    ```bash
+    node apps/cli/dist/cli.js search "keyword" -n 15
+    ```
+  </Tab>
+</Tabs>
+
+<Warning>
+The `biji` binary requires a prior `pnpm -r build` because the linked symlink resolves to
+`dist/cli.js`. If you have only run `pnpm install`, build first or use `pnpm dev:cli` instead.
+</Warning>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Authentication" href="/docs/authentication">
+    Log in and store your biji.com JWT and refresh token before running any command.
+  </Card>
+  <Card title="Quickstart" href="/docs/quickstart">
+    Write, search, and export your first note in a few minutes.
+  </Card>
+  <Card title="Architecture" href="/docs/architecture">
+    How the SDK, CLI, MCP server, and queue fit together.
+  </Card>
+  <Card title="MCP server" href="/docs/mcp-server">
+    Wire the built server into Claude Desktop or Claude Code.
+  </Card>
+</CardGroup>

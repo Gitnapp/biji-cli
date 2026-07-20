@@ -1,0 +1,206 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 240 10% 3.9%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 240 10% 3.9%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 10% 3.9%;
+
+    /* emerald brand */
+    --primary: 160 84% 39%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 240 4.8% 95.9%;
+    --secondary-foreground: 240 5.9% 10%;
+
+    --muted: 240 4.8% 95.9%;
+    --muted-foreground: 240 3.8% 46.1%;
+
+    --accent: 240 4.8% 95.9%;
+    --accent-foreground: 240 5.9% 10%;
+
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+
+    --border: 240 5.9% 90%;
+    --input: 240 5.9% 90%;
+    --ring: 160 84% 39%;
+
+    --radius: 0.7rem;
+  }
+
+  .dark {
+    --background: 240 10% 4%;
+    --foreground: 0 0% 98%;
+
+    --card: 240 8% 6%;
+    --card-foreground: 0 0% 98%;
+
+    --popover: 240 10% 5%;
+    --popover-foreground: 0 0% 98%;
+
+    --primary: 158 79% 48%;
+    --primary-foreground: 240 10% 4%;
+
+    --secondary: 240 4% 12%;
+    --secondary-foreground: 0 0% 98%;
+
+    --muted: 240 4% 12%;
+    --muted-foreground: 240 5% 64.9%;
+
+    --accent: 240 4% 14%;
+    --accent-foreground: 0 0% 98%;
+
+    --destructive: 0 62.8% 45%;
+    --destructive-foreground: 0 0% 98%;
+
+    --border: 240 5% 16%;
+    --input: 240 5% 18%;
+    --ring: 158 79% 48%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  html {
+    scroll-behavior: smooth;
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    touch-action: manipulation;
+  }
+  h1, h2, h3, h4 {
+    text-wrap: pretty;
+  }
+  /* respect motion preferences */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.001ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+  ::selection {
+    background: hsl(var(--primary) / 0.28);
+  }
+  /* thin themed scrollbars */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--border)) transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  *::-webkit-scrollbar-thumb {
+    background: hsl(var(--border));
+    border-radius: 9999px;
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--muted-foreground) / 0.5);
+  }
+}
+
+@layer utilities {
+  .text-gradient {
+    @apply bg-gradient-to-r from-emerald-400 via-teal-300 to-cyan-400 bg-clip-text text-transparent;
+  }
+  .bg-grid {
+    background-image:
+      linear-gradient(to right, hsl(var(--border) / 0.6) 1px, transparent 1px),
+      linear-gradient(to bottom, hsl(var(--border) / 0.6) 1px, transparent 1px);
+    background-size: 44px 44px;
+  }
+  .bg-dot {
+    background-image: radial-gradient(hsl(var(--border) / 0.9) 1px, transparent 1px);
+    background-size: 22px 22px;
+  }
+  .mask-radial-faded {
+    -webkit-mask-image: radial-gradient(ellipse at center, black 30%, transparent 75%);
+    mask-image: radial-gradient(ellipse at center, black 30%, transparent 75%);
+  }
+  .mask-b-faded {
+    -webkit-mask-image: linear-gradient(to bottom, black 55%, transparent 100%);
+    mask-image: linear-gradient(to bottom, black 55%, transparent 100%);
+  }
+}
+
+/* ---------- Shiki dual-theme (build-time highlighted code) ---------- */
+.shiki,
+.shiki span {
+  color: var(--shiki-light);
+  background-color: var(--shiki-light-bg);
+}
+.dark .shiki,
+.dark .shiki span {
+  color: var(--shiki-dark);
+  background-color: transparent;
+}
+.dark .shiki {
+  background-color: var(--shiki-dark-bg);
+}
+
+/* code blocks (used in MDX + landing terminal) */
+pre.shiki {
+  @apply overflow-x-auto rounded-xl border border-border/70 p-4 text-[0.85rem] leading-relaxed;
+  tab-size: 2;
+}
+pre.shiki code {
+  display: grid;
+  font-family: theme("fontFamily.mono");
+}
+
+/* ---------- Docs prose tuning ---------- */
+.prose {
+  --tw-prose-body: hsl(var(--foreground) / 0.85);
+  --tw-prose-headings: hsl(var(--foreground));
+  --tw-prose-links: hsl(var(--primary));
+  --tw-prose-bold: hsl(var(--foreground));
+  --tw-prose-counters: hsl(var(--muted-foreground));
+  --tw-prose-bullets: hsl(var(--border));
+  --tw-prose-hr: hsl(var(--border));
+  --tw-prose-quotes: hsl(var(--foreground) / 0.8);
+  --tw-prose-quote-borders: hsl(var(--primary) / 0.4);
+  --tw-prose-code: hsl(var(--foreground));
+  --tw-prose-th-borders: hsl(var(--border));
+  --tw-prose-td-borders: hsl(var(--border));
+  --tw-prose-invert-body: hsl(var(--foreground) / 0.82);
+  --tw-prose-invert-headings: hsl(var(--foreground));
+}
+.prose :where(code):not(:where(pre code)) {
+  @apply rounded-md border border-border/60 bg-muted/60 px-1.5 py-0.5 text-[0.85em] font-medium;
+}
+.prose :where(code):not(:where(pre code))::before,
+.prose :where(code):not(:where(pre code))::after {
+  content: none;
+}
+.prose :where(a) {
+  @apply font-medium no-underline decoration-primary/40 underline-offset-4 transition-colors hover:underline;
+}
+.prose h2 {
+  @apply mt-12 scroll-mt-24 border-b border-border/60 pb-2;
+}
+.prose h3,
+.prose h4 {
+  @apply scroll-mt-24;
+}
+.prose pre {
+  @apply bg-transparent p-0;
+}
+.heading-anchor {
+  @apply no-underline;
+}

@@ -1,0 +1,206 @@
+---
+title: Knowledge Base
+description: Manage biji.com 知识库 (topic-based knowledge bases) from the CLI.
+---
+
+The `biji kb` command group manages your 知识库 (knowledge bases) — the topic-based
+collections shown in the biji.com sidebar. It lets you list topics, inspect their contents,
+create notes directly inside a KB, parse a URL into a KB with AI, and attach, remove, or move
+existing notes between KBs.
+
+## How 知识库 maps to topics
+
+In the biji.com web app, a 知识库 (knowledge base) is a topic — a named collection that owns a
+root directory (`root_dir`). Every KB you see in the sidebar is one topic, addressable by its
+`id_alias` (a short human-readable handle) or its numeric `id`.
+
+Most `biji kb` subcommands take a `topicIdAlias` as their first argument. The CLI resolves it
+against your topic list and, unless you pass `--directory`, targets that topic's `root_dir`
+automatically. So you rarely need to think about directory ids.
+
+## note_id vs resource_id
+
+A note and its membership in a KB are two different things. When you add a note to a topic, biji
+creates a *resource* that binds the note to that topic — and the resource has its own id.
+
+<Info>
+`note_id` is the id of the note itself (a string, stable across the whole account).
+`resource_id` is the numeric id of the note's binding *inside a specific topic*. The same note
+attached to two KBs has two resource ids. Topic-scoped operations (remove, move) act on the
+`resource_id`, not the `note_id`.
+</Info>
+
+You almost never handle `resource_id` yourself: `kb remove` and `kb move` accept plain
+`note_id`s and look up the matching `resource_id` for you. Pass `--by-resource-id` only when you
+already have the numeric resource ids (for example from `kb resources --json`) and want to skip
+that lookup.
+
+## Listing topics and resources
+
+Start by listing your KBs to find the alias you want to work with.
+
+```bash
+biji kb list
+```
+
+Each row prints the `id_alias`, the topic name, and a stats string when biji provides one.
+Add `--json` for the raw API response.
+
+To see what is inside a KB, pass its alias to `kb resources`:
+
+```bash
+biji kb resources my-reading-kb
+biji kb resources my-reading-kb --page 2
+```
+
+The output lists each resource with its type, title, and id, plus the "added" description. Results
+are paginated — use `--page <n>` to walk through them, or `--json` to get the full payload
+(including `resource_note_meta_data.note_id`, which you can feed back into `remove` or `move`).
+
+## Adding notes to a KB
+
+`kb add` creates a new plain-text or Markdown note and drops it straight into a topic. Content can
+come from an argument, a file, or stdin. The source priority is **argument > `-f` file > stdin**.
+
+<Tabs>
+  <Tab title="Inline">
+```bash
+biji kb add my-reading-kb "Key takeaway from today's session" -t "Session notes"
+```
+  </Tab>
+  <Tab title="From a file">
+```bash
+biji kb add my-reading-kb -f ./notes/summary.md -t "Weekly summary"
+```
+  </Tab>
+  <Tab title="From stdin">
+```bash
+echo "Piped note body" | biji kb add my-reading-kb
+```
+  </Tab>
+</Tabs>
+
+On success the CLI prints the new note's id, its prime id, and its title. If no content is found
+from any source, the command exits with an error.
+
+## Parsing a link into a KB
+
+`kb link` sends a URL to biji's AI, which fetches and parses the page into a structured note and
+files it inside the target KB. Output streams to your terminal as the model writes.
+
+```bash
+biji kb link my-reading-kb "https://example.com/article"
+biji kb link my-reading-kb "https://example.com/article" -p "Summarize in three bullet points"
+```
+
+Use `-p` / `--prompt` to give the AI a custom instruction. Pass `-q` / `--quiet` to suppress the
+streaming output, or `--json` to get a machine-readable summary (`note_id`, `link_title`,
+resolved `title`, `tags`, and content length) instead of the live stream.
+
+<Tip>
+`kb link` is the KB-scoped form of the top-level `biji link` command. To parse many URLs at once
+without blocking, hand them to the background queue instead — see [AI Link Parsing](/docs/cli/link)
+and [Batch Queue](/docs/cli/queue).
+</Tip>
+
+## Attaching, removing, and moving notes
+
+These three commands manage notes that already exist in your account.
+
+<Steps>
+  <Step title="Attach existing notes">
+Add one or more notes (by `note_id`) to a KB's directory:
+
+```bash
+biji kb attach my-reading-kb note_abc123 note_def456
+```
+  </Step>
+  <Step title="Remove notes from a KB">
+Detach notes from a topic. The note itself is untouched — it stays in 全部笔记 (all notes):
+
+```bash
+biji kb remove my-reading-kb note_abc123 note_def456
+```
+
+The CLI resolves each `note_id` to its `resource_id` before removing. If a note is not found in
+that KB, the command reports it and exits non-zero.
+  </Step>
+  <Step title="Move notes between KBs">
+Relocate notes from one topic to another. The target directory defaults to the destination
+topic's `root_dir`:
+
+```bash
+biji kb move my-reading-kb my-archive-kb note_abc123
+```
+  </Step>
+</Steps>
+
+Both `remove` and `move` accept `--by-resource-id` to treat the ids as numeric `resource_id`s and
+skip the note-to-resource lookup.
+
+## Command reference
+
+### biji kb list
+
+<ParamField name="--json" type="boolean">Print the raw API response instead of the formatted list.</ParamField>
+
+### biji kb resources
+
+<ParamField name="topicIdAlias" type="string" required>Topic `id_alias` or numeric id of the KB to inspect.</ParamField>
+<ParamField name="--page" type="string" default="1">Page number of resources to fetch.</ParamField>
+<ParamField name="--directory" type="string">Override the directory id (defaults to the topic's `root_dir`).</ParamField>
+<ParamField name="--json" type="boolean">Print the raw API response.</ParamField>
+
+### biji kb add
+
+<ParamField name="topicIdAlias" type="string" required>Target KB alias or id.</ParamField>
+<ParamField name="content" type="string">Note body as a positional argument. Highest source priority.</ParamField>
+<ParamField name="--file" type="string">Read the note body from a file (`-f`). Used when no content argument is given.</ParamField>
+<ParamField name="--title" type="string">Note title (`-t`). Optional.</ParamField>
+<ParamField name="--directory" type="string">Directory id under the topic (defaults to `root_dir`).</ParamField>
+<ParamField name="--json" type="boolean">Print the raw API response.</ParamField>
+
+### biji kb link
+
+<ParamField name="topicIdAlias" type="string" required>Target KB alias or id.</ParamField>
+<ParamField name="url" type="string" required>The URL to parse into a note.</ParamField>
+<ParamField name="--prompt" type="string">Custom AI instruction (`-p`).</ParamField>
+<ParamField name="--quiet" type="boolean">Suppress progress streaming (`-q`).</ParamField>
+<ParamField name="--directory" type="string">Directory id under the topic (defaults to `root_dir`).</ParamField>
+<ParamField name="--json" type="boolean">Output the stream summary as JSON.</ParamField>
+
+### biji kb attach
+
+<ParamField name="topicIdAlias" type="string" required>Target KB alias or id.</ParamField>
+<ParamField name="noteIds" type="string" required>One or more `note_id`s to attach.</ParamField>
+<ParamField name="--directory" type="string">Directory id under the topic (defaults to `root_dir`).</ParamField>
+<ParamField name="--json" type="boolean">Print the raw API response.</ParamField>
+
+### biji kb remove
+
+<ParamField name="topicIdAlias" type="string" required>KB alias or id to remove notes from.</ParamField>
+<ParamField name="noteIds" type="string" required>One or more `note_id`s (or `resource_id`s with `--by-resource-id`).</ParamField>
+<ParamField name="--directory" type="string">Directory id to search resources in (defaults to `root_dir`).</ParamField>
+<ParamField name="--by-resource-id" type="boolean">Treat the ids as `resource_id`s and skip the note-to-resource lookup.</ParamField>
+<ParamField name="--json" type="boolean">Print the raw results.</ParamField>
+
+### biji kb move
+
+<ParamField name="fromAlias" type="string" required>Source KB alias or id.</ParamField>
+<ParamField name="toAlias" type="string" required>Destination KB alias or id.</ParamField>
+<ParamField name="noteIds" type="string" required>One or more `note_id`s (or `resource_id`s with `--by-resource-id`).</ParamField>
+<ParamField name="--from-directory" type="string">Source directory id (defaults to the source topic's `root_dir`).</ParamField>
+<ParamField name="--to-directory" type="string">Target directory id (defaults to the destination topic's `root_dir`).</ParamField>
+<ParamField name="--by-resource-id" type="boolean">Treat the ids as `resource_id`s and skip the note-to-resource lookup.</ParamField>
+<ParamField name="--json" type="boolean">Print the raw results.</ParamField>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="AI Link Parsing" href="/docs/cli/link">
+    Parse a single URL into a note with streaming AI output.
+  </Card>
+  <Card title="Batch Queue" href="/docs/cli/queue">
+    Queue hundreds of links or uploads and let a background daemon run them.
+  </Card>
+</CardGroup>

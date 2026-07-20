@@ -1,0 +1,163 @@
+---
+title: AI Link Parsing
+description: Turn any URL into a structured note with biji's AI, streamed to your terminal.
+---
+
+`biji link <url>` hands a web page to biji's AI, which fetches the article, summarizes and structures it, and saves the result as a note in your Get笔记 (biji.com) account. The generated note streams into your terminal token by token as it is written.
+
+## How it works
+
+Under the hood, link parsing is an asynchronous, multi-step pipeline on biji's side: the page is fetched, the AI structures it into a note, and the note is persisted. The CLI drives all of this over a single Server-Sent Events (SSE) request, so you do not manage any of the intermediate steps yourself — you issue one command and read the stream until the finished note comes back with its `note_id`.
+
+By default the command prints each chunk of the note as it arrives, then finishes with a short summary block.
+
+<Note>
+This is the same SSE endpoint the biji.com web client uses when you paste a link. The note lands in your "全部笔记" (All Notes) unless you file it into a 知识库 (knowledge base) with `--topic`.
+</Note>
+
+## Stream a link
+
+Pass any article URL. The note content streams live to stdout, followed by a summary of the saved note.
+
+```bash
+biji link "https://example.com/some-article"
+```
+
+The tail of the output looks like this — the summary block is printed after the streamed body:
+
+```text
+────────────────────────────────────────
+note_id:    n_8f3a2c1e
+link_title: The Original Page Title
+title:      A Concise AI-Generated Headline
+tags:       productivity, note-taking
+length:     1842 chars
+```
+
+<ParamField name="url" type="string" required>
+The web page or article URL to parse. Wrap it in quotes so your shell does not split on `?`, `&`, or other query characters.
+</ParamField>
+
+## Quiet and JSON output
+
+Both `--quiet` and `--json` turn off the live token stream — useful in scripts, CI, or anywhere you only care about the result.
+
+<Tabs>
+  <Tab title="--quiet">
+    Suppresses the streamed body and prints only the summary block.
+
+    ```bash
+    biji link --quiet "https://example.com/some-article"
+    ```
+  </Tab>
+  <Tab title="--json">
+    Prints the full result object as pretty-printed JSON and nothing else — ideal for piping into `jq`.
+
+    ```bash
+    biji link --json "https://example.com/some-article"
+    ```
+
+    ```json
+    {
+      "note_id": "n_8f3a2c1e",
+      "link_title": "The Original Page Title",
+      "title": "A Concise AI-Generated Headline",
+      "content": "# A Concise AI-Generated Headline\n\n...full markdown...",
+      "tags": ["productivity", "note-taking"],
+      "note_data": {}
+    }
+    ```
+  </Tab>
+</Tabs>
+
+<Info>
+`--json` implies no streaming, so you never need to pass both. The `content` field holds the complete note as markdown; `length` in the human-readable summary is simply that string's character count.
+</Info>
+
+## Custom prompts
+
+Use `-p` (`--prompt`) to steer how the AI writes the note. The text is sent as the request's `content` field, so it acts as an instruction layered on top of the fetched article.
+
+```bash
+biji link -p "用三句话概括，并列出关键结论" "https://example.com/some-article"
+```
+
+## Filing into a knowledge base
+
+Pass `--topic` with a numeric topic id to drop the resulting note straight into a 知识库 (knowledge base) instead of "全部笔记". Optionally narrow it to a specific folder with `--directory`.
+
+```bash
+biji link --topic 3623874 "https://example.com/some-article"
+biji link --topic 3623874 --directory 90210 -p "重点摘要" "https://example.com/some-article"
+```
+
+<Tip>
+`--topic` expects the topic's numeric id (string form, e.g. `3623874`), not its `id_alias`. If you prefer working with the friendlier alias shown by `biji kb list`, use the alias-based variant [`biji kb link <topicIdAlias> <url>`](/docs/cli/knowledge-base) instead — it wraps the same AI parsing flow. When `--directory` is omitted, the note lands at the topic root.
+</Tip>
+
+## Options
+
+| Flag | Type | Description |
+|---|---|---|
+| `<url>` | string | Positional. The page URL to parse. Required. |
+| `-q`, `--quiet` | boolean | Suppress the live stream; print only the summary. |
+| `--json` | boolean | Output the raw result as JSON; no streaming. |
+| `-p`, `--prompt <text>` | string | Custom AI instruction, sent as the `content` field. |
+| `--topic <topic_id>` | string | Numeric KB topic id to file the note into. |
+| `--directory <dir_id>` | string | Directory id inside the topic; defaults to the topic root. |
+
+<ParamField name="--quiet" type="boolean">
+Alias `-q`. Suppress the streamed note body and print only the final summary block.
+</ParamField>
+
+<ParamField name="--json" type="boolean">
+Print the full result object as pretty-printed JSON. Turns off streaming.
+</ParamField>
+
+<ParamField name="--prompt" type="string">
+Alias `-p`. Custom AI instruction sent as the note's `content` field to steer the summary.
+</ParamField>
+
+<ParamField name="--topic" type="string">
+Numeric KB topic id (string form, e.g. `3623874`) to file the resulting note into a 知识库.
+</ParamField>
+
+<ParamField name="--directory" type="string">
+Directory id inside the topic. Defaults to the topic root when omitted.
+</ParamField>
+
+## Result fields
+
+Whether shown in the summary block or emitted as JSON, a parsed link returns these fields:
+
+| Field | Description |
+|---|---|
+| `note_id` | The id of the saved note; use it with `biji get`, `biji edit`, or `biji export`. |
+| `link_title` | The original title of the source page. |
+| `title` | The AI-generated headline for the note (may be absent). |
+| `content` | The full note body as markdown. |
+| `tags` | AI-assigned tags, if any. |
+| `note_data` | Raw structured note payload returned by the API. |
+
+## Parsing many URLs
+
+`biji link` handles one URL per invocation and blocks until that note is saved. For dozens or hundreds of links, do not loop over the command — submit them to the background queue instead, which runs a local worker with concurrency, dedup, and automatic retries.
+
+```bash
+biji queue add -f urls.txt --topic some-kb --batch reading-2026q2
+```
+
+<Warning>
+Running `biji link` in a tight shell loop over many URLs can trip biji's rate limiting. The queue's exponential backoff and retry logic exists precisely for this case — use it for bulk work.
+</Warning>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Batch Queue" href="/docs/cli/queue">
+    Submit many links and media uploads to a background daemon with dedup and retries.
+  </Card>
+  <Card title="Knowledge Bases" href="/docs/cli/knowledge-base">
+    Manage 知识库 topics and file notes into them, including alias-based link parsing.
+  </Card>
+</CardGroup>

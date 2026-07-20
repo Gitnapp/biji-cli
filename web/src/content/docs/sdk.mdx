@@ -1,0 +1,294 @@
+---
+title: SDK · @biji/client
+description: Call the biji.com API directly from Node.js with the shared TypeScript SDK.
+---
+
+`@biji/client` is the shared TypeScript SDK that powers both the `biji` CLI and the MCP server. It
+bundles ~117 biji.com (Get笔记, the AI note-taking app) endpoint functions, automatic JWT refresh,
+pluggable auth storage, and a dual-mode Server-Sent Events reader — everything you need to call the
+API from your own Node.js project.
+
+## Installation
+
+The SDK lives in this monorepo at `packages/biji-client` and is consumed by the CLI and MCP server
+through pnpm workspaces. To use it from another package in the same workspace, add it as a dependency
+and let pnpm link it:
+
+<Tabs>
+  <Tab title="pnpm">
+    ```json
+    {
+      "dependencies": {
+        "@biji/client": "workspace:*"
+      }
+    }
+    ```
+  </Tab>
+  <Tab title="from source">
+    ```bash
+    pnpm --filter @biji/client build   # emits dist/ (CommonJS + .d.ts)
+    ```
+  </Tab>
+</Tabs>
+
+The package has no runtime dependencies — it relies only on the `fetch` and `ReadableStream` globals
+built into Node 18+. See [Installation](/docs/installation) for workspace and toolchain requirements.
+
+<Note>
+`@biji/client` ships as CommonJS (`"type": "commonjs"`, `main` → `dist/index.js`) with bundled type
+declarations. You can `require()` it from a CommonJS project or `import` it from an ESM project — Node
+resolves the CJS build through its interop layer either way. The source is authored for Node16 module
+resolution, so relative imports carry explicit `.js` extensions (for example `import "./auth.js"`)
+even though the files are `.ts`.
+</Note>
+
+## Quick start
+
+Three steps: choose where credentials are stored, load them, then call any endpoint. Authentication
+must be configured before your first request — the `request()` wrapper calls `ensureFreshToken()`
+under the hood on every call.
+
+```ts
+import {
+  loadAuth,
+  setAuthStorage,
+  FileAuthStorage,
+  searchNotes,
+  createNote,
+  yodaChatStream,
+} from "@biji/client";
+
+// 1. Choose an auth storage backend (File is the default; see below)
+setAuthStorage(new FileAuthStorage());
+
+// 2. Load the token from that backend (or from BIJI_TOKEN / BIJI_REFRESH_TOKEN)
+loadAuth();
+
+// 3. Call any of the ~117 endpoint functions
+const results = await searchNotes("商业", 1, 10); // query, page, pageSize
+```
+
+<Tip>
+`loadAuth()` returns `true` when a usable credential set was found and `false` otherwise (no file,
+or the refresh token already expired). Check the return value before making requests so you can fail
+fast with a clear "please log in" message instead of a 401.
+</Tip>
+
+## Choosing an auth backend
+
+Where credentials live is decided by an injectable `AuthStorage` strategy. The interface is tiny —
+`load()` returns the stored `AuthInfo` or `null`, and `save()` persists it — and two implementations
+ship in the box.
+
+| Implementation | Persistence | Use case |
+|---|---|---|
+| `FileAuthStorage` | `~/.config/get-biji/auth.json` (mode `0600`) | CLI, stdio MCP, desktop — the default. |
+| `MemoryAuthStorage` | In-process only, lost on exit | HTTP servers, tests, per-request credential injection. |
+
+Always call `setAuthStorage()` before `loadAuth()`. `FileAuthStorage` also accepts a custom path if
+the default location does not suit your deployment:
+
+```ts
+import { setAuthStorage, FileAuthStorage, MemoryAuthStorage } from "@biji/client";
+
+// Default — persist to ~/.config/get-biji/auth.json
+setAuthStorage(new FileAuthStorage());
+
+// Custom file location
+setAuthStorage(new FileAuthStorage("/etc/get-biji/auth.json"));
+
+// In-memory only — nothing touches disk
+setAuthStorage(new MemoryAuthStorage());
+```
+
+### Injecting a custom backend
+
+Because `AuthStorage` is just an interface, you can supply your own backend for multi-tenant HTTP
+services, stdio or HTTP MCP servers, or a fly.io deployment where writing to a shared home directory
+is undesirable. A Redis-backed adapter, for example, only needs to implement `load` and `save`:
+
+```ts
+import type { AuthStorage, AuthInfo } from "@biji/client";
+import { setAuthStorage, loadAuth } from "@biji/client";
+
+class RedisAuthStorage implements AuthStorage {
+  constructor(private redis: RedisClient, private tenantKey: string) {}
+
+  load(): AuthInfo | null {
+    const raw = this.redis.getSync(this.tenantKey); // your Redis accessor
+    return raw ? (JSON.parse(raw) as AuthInfo) : null;
+  }
+
+  save(auth: AuthInfo): void {
+    this.redis.set(this.tenantKey, JSON.stringify(auth));
+  }
+}
+
+setAuthStorage(new RedisAuthStorage(redis, `biji:auth:${tenantId}`));
+loadAuth();
+```
+
+When the SDK refreshes an expiring JWT it calls `save()` automatically, so a custom backend keeps the
+freshest token without any extra wiring. For the full credential model, the refresh timing, and the
+`BIJI_TOKEN` / `BIJI_REFRESH_TOKEN` environment overrides, see [Authentication](/docs/authentication).
+
+## Calling endpoints
+
+Every endpoint function is a thin wrapper over the internal `request()` helper. It resolves the base
+host, attaches the `Authorization: Bearer` header, JSON-encodes the body, refreshes the JWT when
+needed, and parses the response — returning parsed JSON (or raw text if the body is not JSON).
+
+```ts
+import { listNotes, getNote, createNote, deleteNote } from "@biji/client";
+
+const page = await listNotes(1, 20);              // paginated list
+const note = await getNote("<note_id>");          // fetch one note
+
+// createNote forwards its argument verbatim as the POST body — the shape mirrors
+// what the biji web client sends. See the CLI `write` command for how markdown is
+// converted to biji's TipTap note payload.
+const created = await createNote({ /* biji note payload */ });
+
+await deleteNote("<prime_id>");                    // move to recycle bin
+```
+
+The SDK spreads requests across four biji.com base hosts, exported as constants so you can build
+ad-hoc calls with the raw `request()` helper if an endpoint you need is not yet wrapped:
+
+| Constant | Host | Covers |
+|---|---|---|
+| `NOTES_API` | `notes-api.biji.com` | Notes, tags, recycle bin, user, sync. |
+| `LEGACY_API` | `get-notes.luojilab.com` | Note create/update/delete, streams, export, media upload. |
+| `OPEN_API` | `knowledge-api.trytalks.com` | Topics, directories, teams, follows, OpenAPI tokens. |
+| `YODA_API` | `notes-api.biji.com` | Yoda AI chat, writing, style, canvas. |
+
+<Warning>
+`resource_id` and `note_id` are not interchangeable. `note_id` identifies the note itself (a string);
+`resource_id` is the numeric binding id of a note inside a 知识库 (knowledge base) topic. Topic-scoped
+removals and moves take `resource_id`, while attaching an existing note to a topic takes `note_id`.
+</Warning>
+
+## Streaming responses
+
+The key streaming primitive is `requestSSE(baseUrl, path, body, options)`, and every AI endpoint
+(`yodaChatStream`, `createNoteStream`, `aiAnalyzeLink`, `aiWritingStream`, the local-media analyzers,
+and more) is built on it. It runs in one of two modes from the same code path, which is what lets the
+CLI and the MCP server share a single implementation.
+
+<Tabs>
+  <Tab title="Blocking (MCP-style)">
+    Omit `onChunk` and `await` the full result. The body is still read incrementally, but you only see
+    the aggregated `content` once the stream finishes — ideal for a tool call that returns one answer.
+
+    ```ts
+    import { yodaChatStream } from "@biji/client";
+
+    const result = await yodaChatStream({
+      mode: "AUTO",
+      notes: { select_all: true },
+      web: false, dedao: false, study: false,
+      topics: {}, selected_resources: [],
+      parent_id: "", question: "总结一下我的商业笔记", action: "next",
+      session_id: "<existing-session-id>",
+    });
+
+    console.log(result.content); // full aggregated answer
+    ```
+  </Tab>
+  <Tab title="Streaming (CLI-style)">
+    Pass an `onChunk` callback and it fires for every content chunk as it arrives — the same aggregated
+    `content` is still returned at the end, so you can render live and keep the full text.
+
+    ```ts
+    import { yodaChatStream } from "@biji/client";
+
+    const result = await yodaChatStream(
+      {
+        mode: "AUTO",
+        notes: { select_all: true },
+        web: false, dedao: false, study: false,
+        topics: {}, selected_resources: [],
+        parent_id: "", question: "总结一下我的商业笔记", action: "next",
+        session_id: "<existing-session-id>",
+      },
+      { onChunk: (text) => process.stdout.write(text) },
+    );
+    ```
+  </Tab>
+</Tabs>
+
+Every streaming call resolves to an `SseResult`:
+
+| Field | Type | Meaning |
+|---|---|---|
+| `content` | string | The full aggregated text (same content that streamed through `onChunk`). |
+| `events` | unknown[] | Every parsed SSE payload, in order — useful for debugging. |
+| `noteInfo` | object (optional) | Present for biji-format streams — carries `note_id`, `title`, `tags`, and generated `noteData` for link and media analysis flows. |
+
+<Note>
+`requestSSE` understands both biji's `msg_type`-tagged event format and generic
+`content` / `text` / `delta.content` shapes, so the same reader works across the chat, writing, and
+link/media endpoints. The `[DONE]` sentinel is handled for you.
+</Note>
+
+## API surface reference
+
+`export *` from `index.ts` re-exports four modules: `auth`, `client`, `storage`, and `api`. The tables
+below group what you get. All functions are `async` and return parsed JSON unless noted.
+
+### Auth and storage primitives
+
+| Export | Kind | Purpose |
+|---|---|---|
+| `setAuthStorage`, `loadAuth` | function | Choose a backend, then populate token state. |
+| `getToken`, `getAuth`, `setToken`, `setAuth` | function | Read or override the in-memory credential state. |
+| `ensureFreshToken`, `authStatus` | function | Refresh an expiring JWT (auto-called by `request`); inspect status. |
+| `AuthStorage` | interface | The `load()` / `save()` contract for a custom backend. |
+| `FileAuthStorage`, `MemoryAuthStorage` | class | The two bundled backends. |
+| `AuthInfo`, `AuthStatus` | type | The credential shape and the status summary shape. |
+| `request`, `requestSSE` | function | Low-level HTTP and SSE helpers behind every endpoint. |
+| `NOTES_API`, `LEGACY_API`, `OPEN_API`, `YODA_API` | constant | The four base hosts. |
+| `RequestOptions`, `SseOptions`, `SseResult`, `SseNoteInfo` | type | Option and result types for the helpers. |
+
+### Endpoint groups
+
+| Group | Representative functions |
+|---|---|
+| Auth / User | `sendSmsCode`, `loginWithSms`, `getUserInfo` |
+| Notes | `listNotes`, `getNote`, `searchNotes`, `searchKnowledgeNotes`, `createNote`, `updateNote`, `deleteNote`, `getNotesCount` |
+| Recycle bin | `listRecycledNotes`, `searchRecycledNotes`, `recycleOpBatch`, `recycleClear` |
+| Tags | `listTags`, `searchTags`, `getTagOptions`, `getTagNotes`, `createTag`, `deleteTag` |
+| Topics (知识库) | `listMyTopics`, `listKbManagedTopics`, `getTopicDetail`, `createTopic`, `editTopic`, `deleteTopic`, `listKbTopicResources` |
+| Topic directories | `createTopicDirectory`, `moveToDirectory`, `removeResourceFromTopic`, `moveResourceToTopic`, `importNotesToTopic` |
+| Follow / Team | `listFollows`, `createFollow`, `listWatchedBloggers`, `listTeams`, `createTeam`, `listTeamMembers` |
+| Export / Sync | `createExportTask`, `getExportTask`, `waitForExportTask`, `listArchiveTasks`, `createArchive` |
+| Share / History / Tokens | `getSharedNote`, `getSearchHistory`, `createOpenapiToken`, `renewOpenapiToken` |
+| AI: note analysis | `createNoteStream`, `aiAnalyzeLink`, `generateNoteTags`, `getRelatedNotes` |
+| AI: Yoda chat | `createYodaChat`, `listYodaChats`, `getYodaChatMessages`, `yodaChatStream`, `stopYodaChatStream`, `sendYodaFeedback` |
+| AI: writing / style / canvas | `aiWritingStream`, `aiStyleGenStream`, `listStyles`, `saveCanvas`, `getCanvasHistory` |
+| Media upload | `getLocalAudioUploadToken`, `getLocalVideoUploadToken`, `uploadMediaToOss`, `aiAnalyzeLocalAudio`, `aiAnalyzeLocalVideo` |
+
+<Info>
+Media upload and export are multi-step, asynchronous flows: create a task or presigned URL first, then
+poll (export) or PUT bytes and start an AI stream (upload). Use the ready-made helpers —
+`waitForExportTask` polls to completion, and `uploadMediaToOss` sets the required OSS callback header
+so the file binds correctly. See the [upload](/docs/cli/upload) and [export](/docs/cli/export) CLI
+pages for the end-to-end sequence.
+</Info>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Authentication" href="/docs/authentication">
+    The credential model, JWT auto-refresh, and environment overrides the SDK uses.
+  </Card>
+  <Card title="MCP server" href="/docs/mcp-server">
+    See how the SDK is wrapped as MCP tools for Claude.
+  </Card>
+  <Card title="CLI reference" href="/docs/cli/notes">
+    The same endpoints, driven from the terminal via the biji command.
+  </Card>
+  <Card title="Reverse engineering" href="/docs/reverse-engineering">
+    How new endpoints are captured and turned into SDK functions.
+  </Card>
+</CardGroup>

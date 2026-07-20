@@ -1,0 +1,230 @@
+---
+title: Reverse Engineering
+description: How new biji.com endpoints are captured with Playwright and mapped into the SDK.
+---
+
+biji.com (Get笔记, the AI note-taking app) has no public API documentation. Every one of the
+~117 endpoints in `@biji/client` was reverse-engineered by watching the real web client's network
+traffic and reshaping each request into an SDK function. This page explains the capture workflow in
+`scripts/capture/`, how to read the captured log, and how to turn a raw request into a typed endpoint.
+
+<Warning>
+biji.com exposes no official or supported API. Capturing traffic from a session you are logged into,
+and calling the resulting endpoints, may violate biji.com's Terms of Service. Use this only against
+your own account, keep request volume modest, and expect endpoints to change without notice. Nothing
+here is endorsed by biji.com or 罗辑思维 (Luojilab, the parent company).
+</Warning>
+
+## What the capture script does
+
+`scripts/capture/capture.mjs` launches a real Chromium window via Playwright, attaches request and
+response listeners to every page, and appends one JSON line per event to a capture log. You browse
+biji.com by hand; the script records the underlying XHR/fetch/SSE/WebSocket calls with their methods,
+paths, selected headers, and bodies.
+
+Two environment variables control where it writes, both with defaults:
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `CAPTURE_OUT` | `/tmp/biji-capture.jsonl` | The append-only JSONL log of captured events. |
+| `CAPTURE_PROFILE` | `/tmp/biji-chromium-profile` | Persisted Chromium profile so your login survives across runs. |
+
+Because the profile is persisted, you log in to biji.com once and stay logged in on subsequent
+captures. Both paths live under `/tmp`, so capture artifacts never pollute the working tree.
+
+## First-time setup
+
+The capture script has its own tiny package (`biji-capture`) that depends only on Playwright, kept
+separate from the workspace. Install it and download a Chromium build once.
+
+<Steps>
+<Step title="Enter the capture directory">
+```bash
+cd scripts/capture
+```
+</Step>
+<Step title="Install Playwright">
+```bash
+pnpm install
+```
+</Step>
+<Step title="Download the Chromium build">
+Playwright needs its own browser binary (~92MB) — the system Chrome is not used.
+
+```bash
+pnpm exec playwright install chromium
+```
+</Step>
+</Steps>
+
+<Note>
+`scripts/capture/node_modules/` is covered by the top-level `node_modules/` ignore rule, so this
+sub-package's dependencies stay out of version control.
+</Note>
+
+## The capture flow
+
+Run the script, drive the web app, mark the region of interest, then extract the write requests from
+the log.
+
+<Steps>
+<Step title="Start the capture">
+From the repo root:
+
+```bash
+node scripts/capture/capture.mjs
+```
+
+Or, from inside `scripts/capture`, `node capture.mjs` (equivalently `pnpm start`). A Chromium window
+opens using the persisted profile at `/tmp/biji-chromium-profile` and navigates to
+`https://www.biji.com/`. The terminal prints where it is writing and how to add markers.
+</Step>
+<Step title="Log in and navigate">
+In the Chromium window, log in to biji.com (only needed the first time thanks to the persisted
+profile) and navigate to the page whose behavior you want to observe. Do not perform the target
+action yet.
+</Step>
+<Step title="Drop a marker before the action">
+Markers are JSON lines written into the same log; they let you slice out exactly the requests one
+UI action produced. The script has a built-in stdin command — type it into the terminal running the
+capture:
+
+```text
+tag before-add-note
+```
+
+You can also append a marker from any other terminal, since it is just a line added to the same file:
+
+```bash
+printf '{"kind":"marker","ts":%s,"label":"before-add-note"}\n' $(date +%s000) >> /tmp/biji-capture.jsonl
+```
+</Step>
+<Step title="Perform exactly one action">
+Do the single target action in the web UI — create a note, attach it to a 知识库 (knowledge base),
+delete a resource, etc. Keep it to one action so the captured region stays clean.
+</Step>
+<Step title="Drop a marker after the action">
+```text
+tag after-add-note
+```
+</Step>
+<Step title="Extract the write requests">
+Use `awk` to print only the lines between the two markers, then keep the mutating methods:
+
+```bash
+awk '/"label":"before-add-note"/{f=1;next} /"label":"after-add-note"/{f=0} f' /tmp/biji-capture.jsonl \
+  | grep -E '"method":"(POST|PUT|DELETE|PATCH)"' \
+  | head -20
+```
+</Step>
+<Step title="Stop the script">
+Type `quit` (or `exit`) into the capture terminal, or press Ctrl+C. Both close Chromium and flush the
+log cleanly.
+</Step>
+</Steps>
+
+<Tip>
+While the script runs, type `stats` into the terminal to print the current size of the log file — a
+quick way to confirm events are actually being recorded.
+</Tip>
+
+## What gets recorded (and what is filtered)
+
+The script is deliberately narrow so the log stays readable.
+
+- **Domains** — only requests whose URL matches `biji.com`, `trytalks.com`, `luojilab.com`, or
+  `iget.com` are logged. Everything else is ignored.
+- **Noise** — images, fonts, CSS, source maps, and analytics/telemetry paths (`gtag`, `analytics`,
+  `sensors.`, `hot-update`) are skipped for both requests and responses.
+- **Resource types** — request bodies are captured for all matching calls (XHR, fetch, SSE);
+  WebSocket opens are logged as `ws-open` events. Response bodies are only read when the
+  `content-type` looks like `json`, `text`, or `event-stream`.
+- **Truncation** — any request body or response preview longer than 4KB (4000 characters) is cut off
+  and suffixed with `…[truncated]`, so large payloads never bloat the log.
+- **Headers** — only a curated set is kept: any `x-*` header, plus `authorization`, `content-type`,
+  `accept`, `origin`, and `referer`. The `authorization` value is masked to `Bearer ***` so tokens
+  never land in the log.
+
+### Log entry shapes
+
+Each line is one JSON object with a `kind` field:
+
+| `kind` | Fields | Emitted when |
+|---|---|---|
+| `req` | `ts`, `method`, `url`, `resourceType`, `headers`, `body` | An in-scope request is sent. |
+| `resp` | `ts`, `status`, `method`, `url`, `bodyPreview` | A matching response arrives. |
+| `ws-open` | `ts`, `url` | A WebSocket connection opens. |
+| `marker` | `ts`, `label` | You run `tag <label>` (or append the line yourself). |
+
+## Mapping a captured request into the SDK
+
+Every biji.com endpoint in the SDK is one function that calls `request()` (for JSON) or
+`requestSSE()` (for streaming), passing a base-URL constant, a path, and options. Read four things
+off a captured `req` entry and translate them:
+
+| Look at | Decides in the SDK |
+|---|---|
+| URL host | Which base constant to pass (`NOTES_API` / `LEGACY_API` / `OPEN_API` / `YODA_API`). |
+| URL path | The path string handed to `request()` / `requestSSE()`. |
+| Method + body shape | The function signature and the `request()` / `requestSSE()` call. |
+| Key headers (`X-Topic-Scope`, `X-Av`, …) | Values passed through `extraHeaders`. |
+
+The base constants live in `packages/biji-client/src/client.ts`:
+
+| Constant | Host | Typical use |
+|---|---|---|
+| `NOTES_API` | `https://notes-api.biji.com` | Notes, tags, search, recycle bin. |
+| `LEGACY_API` | `https://get-notes.luojilab.com` | Older note/topic routes and most SSE streams. |
+| `OPEN_API` | `https://knowledge-api.trytalks.com` | Topic (知识库) management endpoints. |
+| `YODA_API` | `https://notes-api.biji.com` | Yoda AI chat and AI-writing streams. |
+
+For example, a captured `POST https://notes-api.biji.com/voicenotes/web/notes/search` with a JSON
+body becomes a `request(NOTES_API, "/voicenotes/web/notes/search", { method: "POST", body })` call,
+while an `event-stream` response on `get-notes.luojilab.com` becomes a `requestSSE(LEGACY_API, path,
+body, { onChunk })` call. Non-default headers seen in the capture are forwarded verbatim:
+
+```ts
+// A capture showed X-Topic-Scope on this route:
+request(OPEN_API, "/v1/web/topic/…", {
+  method: "POST",
+  body,
+  extraHeaders: { "X-Topic-Scope": "BOOKSPACE" },
+});
+```
+
+## Gotchas learned the hard way
+
+<AccordionGroup>
+<Accordion title="The same endpoint answers on more than one host">
+Some routes respond on both `notes-api.biji.com` and `get-notes.luojilab.com`. They are not always
+interchangeable — routing policy can return sporadic 4xx if you pick the "wrong" one. Always use the
+host you actually saw in the capture for that specific call, not the one that seems more canonical.
+</Accordion>
+<Accordion title="resource_id is not note_id">
+`note_id` is the id of the note itself (a string). `resource_id` is the numeric id that binds a note
+into a topic (知识库). Operations scoped to a topic — deleting from a KB, moving between KBs — take the
+`resource_id`, not the `note_id`. Mixing them up is a common source of silent no-ops.
+</Accordion>
+<Accordion title="Async work is a 3-step pattern, not one POST">
+Exports, media upload with ASR, and other long-running jobs all follow the same shape: POST to create
+the task, GET to poll its status until it finishes, then download the result from an OSS presigned
+URL. Capturing and replaying only the first POST will look like it "works" but never produces output —
+watch the capture for the follow-up GET and download calls too.
+</Accordion>
+</AccordionGroup>
+
+<Info>
+The capture script is committed to the repo, but its output — the JSONL log and the Chromium profile —
+stays in `/tmp/biji-*` and is never checked in.
+</Info>
+
+## Next steps
+
+<CardGroup cols={2}>
+<Card title="Authentication" href="/docs/authentication">
+How the JWT and refresh_token the web client holds are reused by the toolkit.
+</Card>
+<Card title="Introduction" href="/docs/introduction">
+The monorepo layout — shared SDK, CLI, and MCP server — and how the pieces fit.
+</Card>
+</CardGroup>

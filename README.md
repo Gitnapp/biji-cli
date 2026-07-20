@@ -2,6 +2,11 @@
 
 biji.com (Get笔记) 客户端套件 monorepo —— 共享 SDK + CLI + MCP server。
 
+## 官网 / 文档
+
+- **网站 + 文档**：<https://get-biji-api.fly.dev>（landing page + 全套文档）
+- 源码在 [`web/`](web/)：Vite + React + Tailwind + shadcn + Aceternity UI，文档用 Mintlify 内容模型（MDX）编写，单个容器部署到 Fly.io（`nrt`）。本地预览：`cd web && pnpm install && pnpm dev`。
+
 ## 结构
 
 ```

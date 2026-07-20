@@ -1,0 +1,137 @@
+---
+title: Quickstart
+description: Install the CLI, authenticate, and write your first note in a few minutes.
+---
+
+Go from a fresh clone to writing and searching notes in your Get笔记 (biji.com, an AI note-taking
+product) workspace in about five minutes. This walkthrough covers building the monorepo, linking the
+`biji` binary, logging in, and running your first commands.
+
+<Info>
+The CLI reads and writes its credentials at `~/.config/get-biji/auth.json`. Everything below assumes
+you have cloned the repository and are working from its root.
+</Info>
+
+## Install and run
+
+<Steps>
+  <Step title="Check prerequisites">
+    You need `pnpm@10+` and `node@18+`. Node 18 ships the built-in `fetch` and `ReadableStream` the
+    SDK relies on.
+
+    ```bash
+    node --version    # v18.0.0 or newer
+    pnpm --version    # 10.x or newer
+    ```
+  </Step>
+
+  <Step title="Install dependencies and build">
+    Install the workspace, then build every package. The `-r` build runs in topological order — the
+    shared `@biji/client` SDK compiles first, then `@biji/cli` and `@biji/mcp`.
+
+    ```bash
+    pnpm install
+    pnpm -r build
+    ```
+  </Step>
+
+  <Step title="Make the biji command available">
+    Link the CLI so `biji` resolves on your PATH, or skip linking and invoke the built entrypoint
+    directly.
+
+    <Tabs>
+      <Tab title="Link as biji">
+        ```bash
+        npm link --workspace @biji/cli
+        biji --help
+        ```
+      </Tab>
+      <Tab title="Run the built file">
+        ```bash
+        node apps/cli/dist/cli.js --help
+        ```
+      </Tab>
+    </Tabs>
+
+    <Note>
+    The rest of this guide uses `biji`. If you did not link, substitute `node apps/cli/dist/cli.js`
+    for every `biji` invocation.
+    </Note>
+  </Step>
+
+  <Step title="Authenticate">
+    biji.com uses a JWT plus a refresh token (valid ~90 days). The guided login prompts you to paste
+    the auth JSON exported from your browser session, then persists it for automatic JWT refresh.
+
+    ```bash
+    biji auth login     # guided: paste the browser-exported JSON
+    biji auth status    # confirm the token is valid
+    ```
+
+    See [Authentication](/docs/authentication) for exporting the JSON and for the `BIJI_TOKEN` /
+    `BIJI_REFRESH_TOKEN` environment-variable override used in CI and server setups.
+  </Step>
+
+  <Step title="Write your first note">
+    Pass content as an argument. Markdown is converted to biji's TipTap document format automatically.
+    The command prints the new note's `id`, `prime` id, and title.
+
+    ```bash
+    biji write "My first note from the CLI"
+    ```
+
+    Content can also come from a file, from stdin, or from your `$EDITOR` — the source priority is
+    argument, then `-f`, then piped stdin, then editor.
+
+    ```bash
+    biji write -t "Meeting notes" -f ./notes.md
+    echo "Captured from a pipe" | biji write
+    ```
+  </Step>
+
+  <Step title="Search your notes">
+    Run a full-text keyword search across your workspace. Results show the title, ids, and a snippet.
+
+    ```bash
+    biji search "first note" -n 15
+    ```
+  </Step>
+</Steps>
+
+## Command reference
+
+Flags for the two commands you just ran.
+
+### biji write
+
+<ParamField name="content" type="string">Note body, passed as a positional argument. Highest source priority.</ParamField>
+<ParamField name="-f, --file" type="string">Read the note body from a file path.</ParamField>
+<ParamField name="-t, --title" type="string">Optional note title.</ParamField>
+<ParamField name="--topic" type="string">Create the note inside a topic (知识库 / knowledge base) by id.</ParamField>
+<ParamField name="--json" type="boolean">Print the raw API response instead of the formatted summary.</ParamField>
+
+### biji search
+
+<ParamField name="query" type="string" required>The search query, passed as a positional argument.</ParamField>
+<ParamField name="-n, --limit" type="string" default="10">Maximum number of results to return.</ParamField>
+<ParamField name="-p, --page" type="string" default="1">Page number for paging through results.</ParamField>
+<ParamField name="--json" type="boolean">Print the raw API response instead of the formatted list.</ParamField>
+
+<Tip>
+Add `--json` to any command to get machine-readable output — handy for piping into `jq` or wiring the
+CLI into scripts.
+</Tip>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Authentication" href="/docs/authentication">
+    Export the auth JSON, understand token refresh, and configure environment-variable credentials.
+  </Card>
+  <Card title="CLI Notes" href="/docs/cli/notes">
+    The full note toolkit: get, edit, remove, recycle, link parsing, and knowledge-base commands.
+  </Card>
+  <Card title="MCP Server" href="/docs/mcp-server">
+    Expose your notes to Claude Desktop and Claude Code through the stdio MCP server.
+  </Card>
+</CardGroup>

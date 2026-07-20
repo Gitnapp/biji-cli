@@ -1,0 +1,187 @@
+---
+title: Media Upload
+description: Upload audio/video for ASR and AI-structured notes via OSS presigned upload.
+---
+
+`biji upload <file>` sends a local audio or video file to Get笔记 (biji.com), runs
+automatic speech recognition (ASR) on it, and generates an AI-structured note from the
+transcript. One command wraps the full three-step upload flow the web client uses.
+
+```bash
+biji upload podcast.mp3
+```
+
+By default the resulting note lands in 全部笔记 (All Notes). Pass `--topic` to drop it into a
+知识库 (knowledge base) topic instead.
+
+## How it works
+
+Under the hood, `biji upload` performs the same three-step handshake as the browser. You never
+call these steps directly, but knowing the shape helps when debugging a failed upload.
+
+<Steps>
+  <Step title="Request an OSS presigned token">
+    The CLI hashes the file (base64 MD5), then POSTs the filename, size, MD5, container type, and
+    duration to `/voicenotes/web/notes/local_audio/token` (or the `local_video` variant). The
+    response contains the presigned OSS PUT URL, an `x-oss-callback` blob, and a `file_id`.
+  </Step>
+  <Step title="PUT the raw bytes to Aliyun OSS">
+    The file is uploaded straight to Aliyun OSS via the presigned URL, with `Content-MD5` and the
+    `x-oss-callback` header set. The callback triggers biji's `notify.luojilab.com` webhook, which
+    is what binds the stored object to your `file_id`. If the server reports the file is already
+    uploaded (same MD5), this step is skipped.
+  </Step>
+  <Step title="Trigger the AI stream (ASR + structured note)">
+    Finally the CLI opens an SSE stream to `/voicenotes/web/notes/stream_on_local_audio` (or the
+    `topics/notes/stream_on_local_audio` path when `--topic` is set). biji runs ASR and streams
+    back a structured note as it is generated. Chunks print live unless you pass `--quiet` or
+    `--json`.
+  </Step>
+</Steps>
+
+## Usage
+
+```bash
+biji upload <file> [options]
+```
+
+<ParamField name="file" type="string" required>
+Path to the local audio or video file to upload. Relative paths are resolved against the current
+working directory. The command errors if the file does not exist.
+</ParamField>
+
+### Options
+
+<ParamField name="--topic" type="string">
+Drop the resulting note into a 知识库 (knowledge base) topic. Accepts the topic's `id_alias` or
+its numeric id — run `biji kb list` to see available aliases. Omit to keep the note in 全部笔记
+(All Notes).
+</ParamField>
+
+<ParamField name="--directory" type="string">
+Directory id inside the topic. Defaults to the topic's `root_dir`, so you usually only need
+`--topic`.
+</ParamField>
+
+<ParamField name="-p, --prompt" type="string">
+Custom AI instruction appended to the generation request, e.g. a summary style or focus. When
+omitted, biji uses its default structured-note prompt.
+</ParamField>
+
+<ParamField name="-k, --kind" type="audio | video">
+Force the media kind instead of relying on extension detection. Must be exactly `audio` or
+`video`; any other value exits with an error.
+</ParamField>
+
+<ParamField name="--duration" type="number" default="0">
+Duration in milliseconds. When omitted it defaults to `0` and biji probes the duration
+server-side. See [Duration and short clips](#duration-and-short-clips) for why passing this
+explicitly is more reliable.
+</ParamField>
+
+<ParamField name="-q, --quiet" type="boolean" default="false">
+Suppress the streaming chunks and print only the final summary.
+</ParamField>
+
+<ParamField name="--json" type="boolean" default="false">
+Print the full result as JSON instead of the human-readable summary. Implies quiet streaming.
+</ParamField>
+
+## Examples
+
+Upload a podcast episode to 全部笔记 (All Notes):
+
+```bash
+biji upload podcast.mp3
+```
+
+Upload a video clip into a knowledge base topic with a custom prompt:
+
+```bash
+biji upload clip.mp4 --topic reading-notes -p "Extract the key takeaways as bullet points"
+```
+
+Upload a short voice memo with an explicit duration (recommended for short clips):
+
+```bash
+biji upload memo.m4a --duration 45000
+```
+
+Force video handling for a container biji does not auto-detect, and emit JSON for scripting:
+
+```bash
+biji upload --kind video screen.mkv --json
+```
+
+## Media kind detection
+
+The `kind` is auto-detected from the file extension. Video extensions are checked first; anything
+unrecognized falls back to `audio`. Override with `--kind` when detection guesses wrong.
+
+| Kind | Extensions |
+|------|------------|
+| `video` | `.mp4` `.mov` `.m4v` `.webm` `.mkv` `.avi` |
+| `audio` | `.mp3` `.m4a` `.aac` `.wav` `.ogg` `.flac` `.opus` `.webm` |
+
+<Note>
+`.webm` appears in both lists. Because video is checked first, a `.webm` file is treated as video.
+Pass `--kind audio` to force audio handling for an audio-only `.webm`.
+</Note>
+
+## Duration and short clips
+
+When `--duration` is omitted, the CLI sends `0` and biji probes the duration on its own. This
+usually works for typical-length recordings, but the server-side probe can fail on very short
+files, causing the upload or ASR step to error out.
+
+<Warning>
+Omitting `--duration` can fail on short clips. If a brief recording fails to process, re-run with
+an explicit duration in milliseconds (for example `--duration 45000` for a 45-second clip).
+</Warning>
+
+<Tip>
+Duration is expressed in milliseconds, not seconds. Multiply seconds by 1000: a 3-minute file is
+`--duration 180000`.
+</Tip>
+
+## Output
+
+By default the command streams the generated note, then prints a summary:
+
+```text
+────────────────────────────────────────
+topic:    Reading Notes (reading-notes)
+file_id:  1234567890
+note_id:  ntabcdef123456
+title:    Podcast — Weekly Roundup
+length:   4213 chars
+```
+
+The `topic:` line appears only when `--topic` was supplied. With `--json`, the full result object
+is printed instead:
+
+```json
+{
+  "file_id": "1234567890",
+  "note_id": "ntabcdef123456",
+  "title": "Podcast — Weekly Roundup",
+  "content": "…the full structured note…",
+  "oss_url": "https://…presigned-get-url…"
+}
+```
+
+## Next steps
+
+Uploading files one at a time is fine for a handful of recordings. For bulk jobs, hand them to the
+background queue instead — it uploads many files concurrently, retries failures, and returns
+immediately without blocking your terminal.
+
+<CardGroup cols={2}>
+  <Card title="Batch Queue" href="/docs/cli/queue">
+    Queue many uploads and links for a background daemon to process, with dedup and automatic
+    retries.
+  </Card>
+  <Card title="Knowledge Base" href="/docs/cli/knowledge-base">
+    List topics and manage the notes inside a 知识库 (knowledge base), including where uploads land.
+  </Card>
+</CardGroup>

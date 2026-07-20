@@ -1,0 +1,166 @@
+---
+title: Export
+description: Export notes to pdf, docx, md, or mp3 via biji's async export pipeline.
+---
+
+Export one or more notes to a downloadable file. biji.com renders exports asynchronously, so the
+`biji` CLI wraps the full three-step flow for you — create the task, poll until it finishes, and
+download the finished file from a presigned OSS URL. Every command assumes you have already run
+`biji auth login` (see [Authentication](/docs/authentication)).
+
+## How export works
+
+An export is a server-side task, not a synchronous download. The lifecycle is always the same:
+
+<Steps>
+  <Step title="Create the task">
+    `biji export <noteId...>` POSTs the note ids and format to `/voicenotes/web/export/tasks`.
+    The server immediately returns a task with an `id` and a starting `status` — the file is not
+    ready yet.
+  </Step>
+  <Step title="Poll for completion">
+    The task is polled on `/voicenotes/web/export/tasks/<taskId>` until it either succeeds or fails.
+    Statuses progress `scheduled` then `running` then `success` (or `failed`).
+  </Step>
+  <Step title="Download from OSS">
+    Once the status is `success`, the task carries an `access_url` — a presigned OSS download link —
+    and a `filename`. You can open that URL directly, or let `--download` fetch the bytes to a local
+    directory for you.
+  </Step>
+</Steps>
+
+By default `biji export` performs only the first step and prints the task id, so scripts can decide
+whether to poll. Add `--wait` (or `--download`) to block until the file is ready.
+
+## Supported formats
+
+Pass the target format with `-t/--type`. The default is `pdf`.
+
+| Format | `-t` value | Notes |
+|---|---|---|
+| PDF | `pdf` | Default when `-t` is omitted. |
+| Word | `docx` | Editable document. |
+| Markdown | `md` | Plain-text Markdown. |
+| Audio | `mp3` | Only valid for audio notes (see below). |
+
+<Note>
+`mp3` exports the original audio of an **audio note** (for example a note created by
+`biji upload` from a recording). Requesting `mp3` for a plain text note has nothing to export and
+the task will not produce a usable file. Use `pdf`, `docx`, or `md` for text notes.
+</Note>
+
+## Create an export — `biji export`
+
+Accepts one or more note ids as positional arguments. Without `--wait` or `--download` it returns
+the task id and the exact `biji export-status` command to poll it.
+
+```bash
+# Create a PDF export task; prints the task id only
+biji export 1234567890
+
+# Export several notes at once
+biji export 1234567890 9876543210 5555555555
+
+# Markdown, and block until the presigned download URL is ready
+biji export 1234567890 -t md --wait
+
+# Word doc, wait and download the file into /tmp/exports
+biji export 1234567890 -t docx --download /tmp/exports
+
+# Audio note to mp3, downloaded locally
+biji export 1234567890 -t mp3 --download ./audio
+```
+
+<ParamField name="noteIds" type="string" required>
+  Positional, one or more. The `note_id` of each note to export. Space-separate to bundle several
+  notes into a single export task.
+</ParamField>
+<ParamField name="-t, --type" type="string" default="pdf">
+  Output format: `pdf`, `docx`, `md`, or `mp3`. Any other value exits with an error. `mp3` is only
+  valid for audio notes.
+</ParamField>
+<ParamField name="--wait" type="boolean">
+  Poll the task until it finishes, then print the `filename` and the `access_url` (the presigned OSS
+  download link).
+</ParamField>
+<ParamField name="--download" type="string">
+  Download the finished file into this directory (created if needed) and print the saved path.
+  Implies `--wait`.
+</ParamField>
+<ParamField name="--timeout" type="string" default="120000">
+  Maximum time to wait, in milliseconds, before the poll gives up. Only relevant with `--wait` or
+  `--download`. The task is polled about once per second.
+</ParamField>
+<ParamField name="--json" type="boolean">
+  Print the raw task JSON instead of the formatted summary. With `--download` the JSON also includes
+  a `downloaded_to` field.
+</ParamField>
+
+### What each mode prints
+
+<CodeGroup>
+```text Default (create only)
+Export task created: 6f21ab · (pdf, status=scheduled)
+Poll with: biji export-status 6f21ab
+```
+
+```text --wait
+Done. my-note.pdf
+https://oss.example.com/exports/my-note.pdf?...signature...
+```
+
+```text --download
+Saved to: /tmp/exports/my-note.pdf
+```
+</CodeGroup>
+
+<Warning>
+With `--wait` or `--download`, the command exits with a non-zero status if the task ends in a
+non-`success` state or if the poll exceeds `--timeout`. Large or bulk exports can take a while — raise
+`--timeout` (the default is 120000 ms, i.e. two minutes) for big jobs rather than assuming failure.
+</Warning>
+
+## Check status — `biji export-status`
+
+Look up an existing task by id. Useful after a plain `biji export` (no `--wait`), or to re-fetch the
+`access_url` of a task that has already succeeded. The presigned URL is included once the task is
+finished.
+
+```bash
+biji export-status 6f21ab
+
+# Raw JSON (id, type, status, finished, access_url, filename, ...)
+biji export-status 6f21ab --json
+```
+
+<ParamField name="taskId" type="string" required>
+  Positional. The task id returned by `biji export`.
+</ParamField>
+<ParamField name="--json" type="boolean">
+  Print the raw task JSON instead of the one-line summary. Exits non-zero if the task id is not found.
+</ParamField>
+
+The formatted output shows the task id, format, status, and `finished` flag, and prints the download
+URL on its own line once the task has completed.
+
+<Tip>
+Presigned OSS URLs expire. If an `access_url` stops working, run `biji export-status <taskId>` again
+to fetch a fresh link, or re-create the task with `biji export`.
+</Tip>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Notes" href="/docs/cli/notes">
+    Find the `note_id` values to export with `biji search` and `biji get`.
+  </Card>
+  <Card title="Media upload" href="/docs/cli/upload">
+    Create audio notes with `biji upload` — the source material for `mp3` exports.
+  </Card>
+  <Card title="Queue" href="/docs/cli/queue">
+    Run large batch jobs in the background with the SQLite-backed queue daemon.
+  </Card>
+  <Card title="MCP server" href="/docs/mcp-server">
+    Trigger the same export flow from Claude Desktop and Claude Code as an MCP tool.
+  </Card>
+</CardGroup>
