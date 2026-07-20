@@ -4,6 +4,7 @@
   "version": "0.1.0",
   "type": "module",
   "description": "Landing page + docs site for get-biji-api",
+  "packageManager": "pnpm@10.31.0",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
