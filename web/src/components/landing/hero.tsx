@@ -8,7 +8,7 @@ import { Terminal, Line, Out, Cmd, Flag } from "@/components/terminal"
 import { CopyButton } from "@/components/copy-button"
 import { site } from "@/lib/site"
 
-const INSTALL = "git clone https://github.com/Gitnapp/get-biji-api && pnpm install"
+const INSTALL = "git clone https://github.com/Gitnapp/get-biji-connector && pnpm install"
 
 export function Hero() {
   return (

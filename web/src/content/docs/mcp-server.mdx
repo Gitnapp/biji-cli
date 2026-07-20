@@ -96,7 +96,7 @@ Edit `~/.config/Claude/claude_desktop_config.json` and add the server under `mcp
   "mcpServers": {
     "get-biji": {
       "command": "node",
-      "args": ["/absolute/path/to/get-biji-api/apps/mcp/dist/index.js"]
+      "args": ["/absolute/path/to/get-biji-connector/apps/mcp/dist/index.js"]
     }
   }
 }
@@ -108,7 +108,7 @@ Register it with the CLI (recommended), then verify.
 
 ```bash
 claude mcp add --scope user --transport stdio get-biji \
-  -- node /absolute/path/to/get-biji-api/apps/mcp/dist/index.js
+  -- node /absolute/path/to/get-biji-connector/apps/mcp/dist/index.js
 
 claude mcp list
 ```
@@ -128,7 +128,7 @@ values. This is useful for CI or headless deployments.
   "mcpServers": {
     "get-biji": {
       "command": "node",
-      "args": ["/absolute/path/to/get-biji-api/apps/mcp/dist/index.js"],
+      "args": ["/absolute/path/to/get-biji-connector/apps/mcp/dist/index.js"],
       "env": {
         "BIJI_TOKEN": "<jwt>",
         "BIJI_REFRESH_TOKEN": "<refresh_token>",

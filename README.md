@@ -1,10 +1,10 @@
-# get-biji-api
+# get-biji-connector
 
 biji.com (Get笔记) 客户端套件 monorepo —— 共享 SDK + CLI + MCP server。
 
 ## 官网 / 文档
 
-- **网站 + 文档**：<https://get-biji-api.fly.dev>（landing page + 全套文档）
+- **网站 + 文档**：<https://get-biji-connector.fly.dev>（landing page + 全套文档）
 - 源码在 [`web/`](web/)：Vite + React + Tailwind + shadcn + Aceternity UI，文档用 Mintlify 内容模型（MDX）编写，单个容器部署到 Fly.io（`nrt`）。本地预览：`cd web && pnpm install && pnpm dev`。
 
 ## 结构
@@ -217,7 +217,7 @@ REPL 内：`/quit` 退出，`/reset` 清空上下文（重置 parent_id）。
   "mcpServers": {
     "get-biji": {
       "command": "node",
-      "args": ["/absolute/path/to/get-biji-api/apps/mcp/dist/index.js"]
+      "args": ["/absolute/path/to/get-biji-connector/apps/mcp/dist/index.js"]
     }
   }
 }

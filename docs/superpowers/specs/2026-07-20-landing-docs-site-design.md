@@ -1,4 +1,4 @@
-# Design Spec — get-biji-api Landing Page + Docs Site
+# Design Spec — get-biji-connector Landing Page + Docs Site
 
 **Date:** 2026-07-20
 **Status:** Approved (architecture confirmed via clarifying questions)
@@ -6,7 +6,7 @@
 
 ## Goal
 
-Ship a marketing **landing page** and a **documentation site** for `get-biji-api` — the
+Ship a marketing **landing page** and a **documentation site** for `get-biji-connector` — the
 unofficial client suite (SDK + CLI + MCP server + queue) for **biji.com (Get笔记)**.
 Stack: **Vite + React + TypeScript + Tailwind CSS + shadcn/ui + Aceternity UI**, with docs
 authored in the **Mintlify content model** (MDX + `docs.json`-style nav). Push to GitHub, then
@@ -100,7 +100,7 @@ All content sourced from `README.md` / `apps/mcp/README.md` — must stay factua
   final stage `nginx:alpine` serving `/usr/share/nginx/html`.
 - **nginx.conf**: `try_files $uri /index.html` (SPA), gzip, immutable cache for hashed assets,
   no-cache for `index.html`, security headers (X-Content-Type-Options, Referrer-Policy, etc.).
-- **fly.toml**: `app = "get-biji-api"`, `primary_region = "nrt"`, `internal_port = 80`,
+- **fly.toml**: `app = "get-biji-connector"`, `primary_region = "nrt"`, `internal_port = 80`,
   `force_https = true`, `auto_stop_machines`/`auto_start`, `min_machines_running = 1`
   (avoid cold starts; nginx static is tiny on shared-cpu-1x/256MB).
 

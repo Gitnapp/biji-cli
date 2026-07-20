@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "Landing page + docs site for get-biji-api",
+  "description": "Landing page + docs site for get-biji-connector",
   "packageManager": "pnpm@10.31.0",
   "scripts": {
     "dev": "vite",

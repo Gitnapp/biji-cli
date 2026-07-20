@@ -40,7 +40,7 @@ export function SiteFooter() {
           <div className="col-span-2 md:col-span-1">
             <div className="flex items-center gap-2.5">
               <LogoMark />
-              <span className="font-semibold tracking-tight">get-biji-api</span>
+              <span className="font-semibold tracking-tight">get-biji-connector</span>
             </div>
             <p className="mt-4 max-w-xs text-sm leading-relaxed text-muted-foreground">
               {site.tagline} — SDK · CLI · MCP for biji.com (Get笔记).
@@ -51,7 +51,7 @@ export function SiteFooter() {
               rel="noreferrer noopener"
               className="mt-5 inline-flex items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
             >
-              <Github className="h-4 w-4" /> Gitnapp/get-biji-api
+              <Github className="h-4 w-4" /> Gitnapp/get-biji-connector
             </a>
           </div>
           {cols.map((c) => (

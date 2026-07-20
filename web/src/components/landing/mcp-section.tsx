@@ -67,7 +67,7 @@ export function McpSection() {
               <span className="text-cyan-300">"args"</span>: [
               {"\n        "}
               <span className="text-emerald-300">
-                "/path/to/get-biji-api/apps/mcp/dist/index.js"
+                "/path/to/get-biji-connector/apps/mcp/dist/index.js"
               </span>
               {"\n      "}]
               {"\n    "}

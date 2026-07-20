@@ -8,7 +8,7 @@ interface AuroraBackgroundProps extends React.HTMLProps<HTMLDivElement> {
 
 /**
  * Aceternity UI — Aurora Background.
- * Emerald/teal/cyan aurora tuned for get-biji-api's brand, theme-aware
+ * Emerald/teal/cyan aurora tuned for get-biji-connector's brand, theme-aware
  * (white-gradient + invert in light, dark-gradient in dark).
  */
 export function AuroraBackground({

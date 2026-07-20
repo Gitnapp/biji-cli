@@ -3,7 +3,7 @@ title: Architecture
 description: How the SDK, CLI, MCP server, and queue fit together in the monorepo.
 ---
 
-get-biji-api is a pnpm workspace that splits one reverse-engineered API surface into four packages.
+get-biji-connector is a pnpm workspace that splits one reverse-engineered API surface into four packages.
 Everything funnels through a single shared SDK, so the CLI, the MCP server, your own scripts, and the
 background queue all speak to biji.com (Get笔记, the AI note-taking product) through the same HTTP layer,
 the same auth handling, and the same streaming primitives.
@@ -14,7 +14,7 @@ The workspace globs are `apps/*` and `packages/*` (see `pnpm-workspace.yaml`). A
 `apps/`; reusable libraries live under `packages/`.
 
 ```text
-get-biji-api/
+get-biji-connector/
 ├── apps/
 │   ├── cli/            @biji/cli     → biji            (commander)
 │   └── mcp/            @biji/mcp     → get-biji-mcp    (MCP stdio server)

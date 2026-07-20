@@ -1,9 +1,9 @@
 export const site = {
-  name: "get-biji-api",
+  name: "get-biji-connector",
   tagline: "The unofficial Get笔记 toolkit",
   description:
     "A shared TypeScript SDK, a full-featured CLI, and an MCP server for biji.com (Get笔记).",
-  repo: "https://github.com/Gitnapp/get-biji-api",
+  repo: "https://github.com/Gitnapp/get-biji-connector",
   npm: {
     client: "@biji/client",
     cli: "@biji/cli",

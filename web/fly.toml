@@ -1,7 +1,7 @@
-# fly.toml — get-biji-api landing + docs site
+# fly.toml — get-biji-connector landing + docs site
 # Deploy:  fly deploy   (from the web/ directory)
 
-app = "get-biji-api"
+app = "get-biji-connector"
 primary_region = "nrt"
 
 [build]

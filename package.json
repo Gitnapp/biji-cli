@@ -1,5 +1,5 @@
 {
-  "name": "get-biji-api",
+  "name": "get-biji-connector",
   "private": true,
   "version": "0.0.0",
   "description": "Monorepo for biji.com clients: shared API package, CLI, and MCP server",

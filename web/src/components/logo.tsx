@@ -52,7 +52,7 @@ export function Logo({ className }: { className?: string }) {
     >
       <LogoMark />
       <span className="text-[15px]">
-        get-biji<span className="text-primary">-api</span>
+        get-biji<span className="text-primary">-connector</span>
       </span>
     </Link>
   )
