@@ -1,8 +1,7 @@
 import { Command } from "commander";
 import * as fs from "fs";
 import * as path from "path";
-import { exportNotes, waitExportTask } from "../api.js";
-import { getExportTask, type ExportFormat } from "@biji/client";
+import { createExportTask, getExportTask, waitForExportTask, type ExportFormat, type ExportTask } from "@biji/client";
 
 const VALID: ExportFormat[] = ["pdf", "docx", "md", "mp3"];
 
@@ -31,7 +30,9 @@ export function registerExportCommand(program: Command): void {
         console.error(`--type must be one of ${VALID.join(", ")} (got: ${type})`);
         process.exit(1);
       }
-      const task = await exportNotes(noteIds, type);
+      const taskRes = await createExportTask(noteIds, type);
+      const task: ExportTask | undefined = taskRes.c;
+      if (!task?.id) throw new Error(`failed to create export task: ${JSON.stringify(taskRes).slice(0, 300)}`);
       const shouldWait = opts.wait || !!opts.download;
       if (!shouldWait) {
         if (opts.json) {
@@ -42,7 +43,7 @@ export function registerExportCommand(program: Command): void {
         }
         return;
       }
-      const final = await waitExportTask(task.id, { timeoutMs: opts.timeout ? Number(opts.timeout) : undefined });
+      const final = await waitForExportTask(task.id, { timeoutMs: opts.timeout ? Number(opts.timeout) : undefined });
       if (final.status !== "success") {
         console.error(`Export failed: status=${final.status}, finished=${final.finished}`);
         process.exit(1);

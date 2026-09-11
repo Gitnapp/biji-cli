@@ -1,43 +1,17 @@
 import { Command } from "commander";
 import * as fs from "fs";
 import {
-  addNoteToTopic,
-  aiAnalyzeLink,
-  attachNotesToTopic,
-  listKbResources,
-  listKbTopics,
-  moveResourceBetweenTopics,
-  removeResourceFromKb,
+  analyzeLink,
+  createMarkdownNote,
+  importNotesToTopic,
+  listKbManagedTopics,
+  listKbTopicResources,
+  moveResourceToTopic,
+  removeResourceFromTopic,
+  resolveKbTopic,
   resolveNoteIdsToResourceIds,
-  type KbTopic,
-} from "../api.js";
-
-async function readStdin(): Promise<string> {
-  if (process.stdin.isTTY) return "";
-  const chunks: Buffer[] = [];
-  for await (const chunk of process.stdin) chunks.push(chunk as Buffer);
-  return Buffer.concat(chunks).toString("utf-8");
-}
-
-function pickTopic(list: KbTopic[] | undefined, id: string): KbTopic | undefined {
-  if (!list) return undefined;
-  return list.find((t) => t.id_alias === id || String(t.id) === id);
-}
-
-async function resolveTopic(idOrAlias: string): Promise<{ topic_id: string; topic_directory_id: string; name: string }> {
-  const res = await listKbTopics(1, 50);
-  const list = res?.c?.list;
-  const t = pickTopic(list, idOrAlias);
-  if (!t) {
-    const known = list?.map((x) => `${x.id_alias} (${x.name})`).join(", ") ?? "(none)";
-    throw new Error(`KB topic not found: ${idOrAlias}\nAvailable: ${known}`);
-  }
-  return {
-    topic_id: String(t.id),
-    topic_directory_id: String(t.root_dir?.id ?? ""),
-    name: t.name,
-  };
-}
+} from "@biji/client";
+import { readStdin } from "../io.js";
 
 export function registerKbCommand(program: Command): void {
   const kb = program.command("kb").description("Knowledge-base (知识库) topics: list / add / link");
@@ -46,7 +20,7 @@ export function registerKbCommand(program: Command): void {
     .description("List your KB topics (the ones shown in biji.com 知识库 sidebar)")
     .option("--json", "raw JSON output")
     .action(async (opts: { json?: boolean }) => {
-      const res = await listKbTopics();
+      const res = await listKbManagedTopics();
       if (opts.json) {
         console.log(JSON.stringify(res, null, 2));
         return;
@@ -68,9 +42,9 @@ export function registerKbCommand(program: Command): void {
     .option("--directory <dirId>", "override directory id (defaults to topic root_dir)")
     .option("--json", "raw JSON output")
     .action(async (alias: string, opts: { page?: string; directory?: string; json?: boolean }) => {
-      const meta = await resolveTopic(alias);
+      const meta = await resolveKbTopic(alias);
       const dirId = opts.directory ?? meta.topic_directory_id;
-      const res = await listKbResources(alias, dirId, { page: Number(opts.page ?? 1) });
+      const res = await listKbTopicResources(alias, dirId, { page: Number(opts.page ?? 1) });
       if (opts.json) {
         console.log(JSON.stringify(res, null, 2));
         return;
@@ -102,8 +76,8 @@ export function registerKbCommand(program: Command): void {
         console.error("No content provided. Pass content as arg, -f file, or via stdin.");
         process.exit(1);
       }
-      const meta = await resolveTopic(alias);
-      const res = await addNoteToTopic({
+      const meta = await resolveKbTopic(alias);
+      const res = await createMarkdownNote({
         topic_id: meta.topic_id,
         topic_directory_id: opts.directory ?? meta.topic_directory_id,
         content: body,
@@ -126,7 +100,7 @@ export function registerKbCommand(program: Command): void {
     .option("--by-resource-id", "treat <noteIds> as resource_ids (skip note→resource lookup)")
     .option("--json", "raw JSON output")
     .action(async (alias: string, ids: string[], opts: { directory?: string; byResourceId?: boolean; json?: boolean }) => {
-      const meta = await resolveTopic(alias);
+      const meta = await resolveKbTopic(alias);
       let resourceIds: Array<{ note_id?: string; resource_id: number }>;
       if (opts.byResourceId) {
         resourceIds = ids.map((rid) => ({ resource_id: Number(rid) }));
@@ -143,7 +117,7 @@ export function registerKbCommand(program: Command): void {
       const results: Array<{ resource_id: number; note_id?: string; ok: boolean; error?: string }> = [];
       for (const r of resourceIds) {
         try {
-          await removeResourceFromKb(r.resource_id, meta.topic_id);
+          await removeResourceFromTopic(r.resource_id, meta.topic_id);
           results.push({ ...r, ok: true });
         } catch (e) {
           results.push({ ...r, ok: false, error: (e as Error).message });
@@ -168,8 +142,8 @@ export function registerKbCommand(program: Command): void {
     .option("--by-resource-id", "treat <noteIds> as resource_ids (skip note→resource lookup)")
     .option("--json", "raw JSON output")
     .action(async (fromAlias: string, toAlias: string, ids: string[], opts: { fromDirectory?: string; toDirectory?: string; byResourceId?: boolean; json?: boolean }) => {
-      const from = await resolveTopic(fromAlias);
-      const to = await resolveTopic(toAlias);
+      const from = await resolveKbTopic(fromAlias);
+      const to = await resolveKbTopic(toAlias);
       const toDirId = opts.toDirectory ?? to.topic_directory_id;
       let resourceIds: Array<{ note_id?: string; resource_id: number }>;
       if (opts.byResourceId) {
@@ -187,7 +161,7 @@ export function registerKbCommand(program: Command): void {
       const results: Array<{ resource_id: number; note_id?: string; ok: boolean; error?: string }> = [];
       for (const r of resourceIds) {
         try {
-          await moveResourceBetweenTopics(r.resource_id, from.topic_id, to.topic_id, toDirId);
+          await moveResourceToTopic(r.resource_id, from.topic_id, to.topic_id, toDirId);
           results.push({ ...r, ok: true });
         } catch (e) {
           results.push({ ...r, ok: false, error: (e as Error).message });
@@ -210,9 +184,9 @@ export function registerKbCommand(program: Command): void {
     .option("--directory <dirId>", "directory id under the topic; defaults to topic root_dir")
     .option("--json", "raw JSON output")
     .action(async (alias: string, noteIds: string[], opts: { directory?: string; json?: boolean }) => {
-      const meta = await resolveTopic(alias);
+      const meta = await resolveKbTopic(alias);
       const dirId = opts.directory ?? meta.topic_directory_id;
-      const res = await attachNotesToTopic(noteIds, meta.topic_id, dirId);
+      const res = await importNotesToTopic(noteIds, meta.topic_id, dirId);
       if (opts.json) {
         console.log(JSON.stringify(res, null, 2));
         return;
@@ -229,12 +203,13 @@ export function registerKbCommand(program: Command): void {
     .option("-p, --prompt <text>", "custom AI instruction")
     .option("--directory <dirId>", "directory id under the topic; defaults to topic root_dir")
     .action(async (alias: string, url: string, opts: { quiet?: boolean; json?: boolean; prompt?: string; directory?: string }) => {
-      const meta = await resolveTopic(alias);
+      const meta = await resolveKbTopic(alias);
       const onChunk = opts.quiet || opts.json ? undefined : (t: string) => process.stdout.write(t);
-      const result = await aiAnalyzeLink(url, onChunk, {
+      const result = await analyzeLink(url, {
         prompt: opts.prompt,
         topic_id: meta.topic_id,
         topic_directory_id: opts.directory ?? meta.topic_directory_id,
+        onChunk,
       });
       if (!opts.quiet && !opts.json) process.stdout.write("\n\n");
       if (opts.json) {

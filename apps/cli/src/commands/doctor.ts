@@ -1,9 +1,8 @@
 import { Command } from "commander";
 import * as fs from "fs";
-import { FileAuthStorage } from "@biji/client";
+import { authStatus, FileAuthStorage, getUserInfo } from "@biji/client";
 import { counts, isWorkerAlive, dbPath, logPath } from "@biji/queue";
-import { authStatus } from "../auth.js";
-import { getUserInfo } from "../api.js";
+import { formatAuthStatus } from "./auth.js";
 import { allStatuses, localMcpEntry } from "../mcp-targets.js";
 
 type Level = "ok" | "warn" | "fail";
@@ -37,13 +36,14 @@ async function runChecks(opts: { offline?: boolean }): Promise<Check[]> {
   });
 
   // 3. Auth credentials
-  const s = authStatus();
-  const authed = !s.startsWith("Not authenticated");
+  const s = formatAuthStatus();
+  const status = authStatus();
+  const authed = status.authenticated;
   if (!authed) {
     checks.push({ name: "Auth", level: "fail", detail: "not authenticated — run `biji auth login`" });
   } else {
-    const refreshExpired = /Refresh token expires in: -/.test(s);
-    const jwtExpired = /JWT expires in: -/.test(s);
+    const refreshExpired = status.has_refresh_token && (status.refresh_expire_in_seconds ?? 0) < 0;
+    const jwtExpired = (status.jwt_expire_in_seconds ?? 0) < 0;
     const first = s.split("\n").slice(1).join(" · ").replace(/\s+/g, " ");
     checks.push({
       name: "Auth",
@@ -69,7 +69,7 @@ async function runChecks(opts: { offline?: boolean }): Promise<Check[]> {
   // 5. Live API check (skippable)
   if (!opts.offline && authed) {
     try {
-      const info = (await getUserInfo()) as { c?: { data?: { uid?: number; nickname?: string } } };
+      const info = await getUserInfo();
       const uid = info?.c?.data?.uid;
       checks.push({ name: "API reach", level: "ok", detail: uid ? `ok (uid=${uid})` : "ok" });
     } catch (err) {

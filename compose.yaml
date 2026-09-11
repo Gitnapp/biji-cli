@@ -1,0 +1,29 @@
+services:
+  mcp:
+    build: .
+    image: biji
+    stdin_open: true
+    volumes:
+      - biji-config:/root/.config/get-biji
+      - ./:/work
+    # run tools with: docker compose run --rm mcp biji <cmd>
+
+  worker:
+    build: .
+    image: biji
+    command: ["biji", "queue", "worker", "--daemon"]
+    restart: unless-stopped
+    volumes:
+      - biji-config:/root/.config/get-biji
+      - ./:/work
+    # `biji queue add` normally forks a detached worker process to run jobs in
+    # the background, but inside a container that child is reparented under
+    # PID 1 and dies the moment the CLI invocation exits — so the worker has
+    # to run as its own long-lived service instead. It idle-exits after 5 min
+    # with no jobs; compose (restart: unless-stopped) brings it back up. Also,
+    # PID files don't cross container namespaces, so `biji queue status` run
+    # from another container (e.g. the `mcp` service) will report "not
+    # running" even while this service is up and processing jobs — expected.
+
+volumes:
+  biji-config:

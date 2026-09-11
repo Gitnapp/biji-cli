@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { Command } from "commander";
-import { loadAuth } from "./auth.js";
+import { loadAuth } from "@biji/client";
 import { registerAuthCommands } from "./commands/auth.js";
 import { registerWriteCommand } from "./commands/write.js";
 import { registerLinkCommand } from "./commands/link.js";

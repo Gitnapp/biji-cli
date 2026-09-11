@@ -6,6 +6,7 @@ import {
   listYodaChats,
   yodaChatStream,
 } from "@biji/client";
+import { readStdin } from "../io.js";
 
 interface YodaSession {
   id: string;
@@ -110,13 +111,6 @@ async function repl(sessionId: string, opts: ChatBaseOptions): Promise<void> {
   rl.close();
 }
 
-async function readPipedStdin(): Promise<string> {
-  if (process.stdin.isTTY) return "";
-  const chunks: Buffer[] = [];
-  for await (const chunk of process.stdin) chunks.push(chunk as Buffer);
-  return Buffer.concat(chunks).toString("utf-8").trim();
-}
-
 export function registerChatCommand(program: Command): void {
   const chat = program
     .command("chat [message]")
@@ -130,7 +124,7 @@ export function registerChatCommand(program: Command): void {
       message: string | undefined,
       opts: { session?: string; new?: boolean; notes?: boolean; web?: boolean; dedao?: boolean },
     ) => {
-      const piped = await readPipedStdin();
+      const piped = await readStdin();
       const text = (message ?? piped).trim();
       const { sessionId, reused } = await ensureSession({ session: opts.session, new: opts.new });
       if (!opts.session && reused) console.error(`(reusing recent session ${sessionId})`);

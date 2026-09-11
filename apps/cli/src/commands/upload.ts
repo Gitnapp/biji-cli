@@ -1,6 +1,5 @@
 import { Command } from "commander";
-import { listKbTopics, uploadLocalMedia, type KbTopic } from "../api.js";
-import type { LocalMediaKind } from "@biji/client";
+import { resolveKbTopic, uploadLocalMedia, type LocalMediaKind } from "@biji/client";
 
 interface UploadOpts {
   topic?: string;
@@ -10,18 +9,6 @@ interface UploadOpts {
   duration?: string;
   quiet?: boolean;
   json?: boolean;
-}
-
-async function resolveTopic(alias: string | undefined): Promise<{ topic_id?: string; topic_directory_id?: string; name?: string }> {
-  if (!alias) return {};
-  const res = await listKbTopics(1, 50);
-  const list = res?.c?.list as KbTopic[] | undefined;
-  const t = list?.find((x) => x.id_alias === alias || String(x.id) === alias);
-  if (!t) {
-    const known = list?.map((x) => `${x.id_alias} (${x.name})`).join(", ") ?? "(none)";
-    throw new Error(`KB topic not found: ${alias}\nAvailable: ${known}`);
-  }
-  return { topic_id: String(t.id), topic_directory_id: String(t.root_dir?.id ?? ""), name: t.name };
 }
 
 export function registerUploadCommand(program: Command): void {
@@ -40,7 +27,9 @@ export function registerUploadCommand(program: Command): void {
         console.error(`--kind must be 'audio' or 'video', got: ${opts.kind}`);
         process.exit(1);
       }
-      const meta = await resolveTopic(opts.topic);
+      const meta: Partial<{ topic_id: string; topic_directory_id: string; name: string }> = opts.topic
+        ? await resolveKbTopic(opts.topic)
+        : {};
       const onChunk = opts.quiet || opts.json ? undefined : (t: string) => process.stdout.write(t);
       const result = await uploadLocalMedia(file, {
         kind: opts.kind,

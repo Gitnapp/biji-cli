@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { aiAnalyzeLink } from "../api.js";
+import { analyzeLink } from "@biji/client";
 
 interface LinkCmdOpts {
   quiet?: boolean;
@@ -22,10 +22,11 @@ export function registerLinkCommand(program: Command): void {
       const onChunk = opts.quiet || opts.json
         ? undefined
         : (text: string) => process.stdout.write(text);
-      const result = await aiAnalyzeLink(url, onChunk, {
+      const result = await analyzeLink(url, {
         prompt: opts.prompt,
         topic_id: opts.topic,
         topic_directory_id: opts.directory,
+        onChunk,
       });
       if (!opts.quiet && !opts.json) process.stdout.write("\n\n");
       if (opts.json) {

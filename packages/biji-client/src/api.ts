@@ -9,6 +9,7 @@ import {
   type SseOptions,
   type SseResult,
 } from "./client.js";
+import type { BijiResp, KbTopic, NoteSummary } from "./types.js";
 
 // ──────────────────── Auth ────────────────────
 
@@ -35,7 +36,10 @@ export async function loginWithSms(phone: string, smscode: string) {
 // ──────────────────── User ────────────────────
 
 export async function getUserInfo() {
-  return request(NOTES_API, "/voicenotes/web/user/info");
+  return request<BijiResp<{ data?: { uid?: number; nickname?: string } }>>(
+    NOTES_API,
+    "/voicenotes/web/user/info",
+  );
 }
 
 // ──────────────────── Notes ────────────────────
@@ -51,13 +55,15 @@ export async function getNote(noteId: string) {
 }
 
 export async function getNoteFromLegacy(idOrPrime: string) {
-  return request(LEGACY_API, `/voicenotes/web/notes/${idOrPrime}`);
+  return request<BijiResp<{ data?: NoteSummary }>>(LEGACY_API, `/voicenotes/web/notes/${idOrPrime}`);
 }
 
 export async function searchNotes(query: string, page = 1, pageSize = 20) {
-  return request(NOTES_API, "/voicenotes/web/notes/search", {
-    params: { query, page, page_size: pageSize },
-  });
+  return request<BijiResp<{ data?: { notes?: NoteSummary[]; total?: number } }>>(
+    NOTES_API,
+    "/voicenotes/web/notes/search",
+    { params: { query, page, page_size: pageSize } },
+  );
 }
 
 export async function searchKnowledgeNotes(query: string, page = 1, pageSize = 20) {
@@ -97,14 +103,14 @@ export async function createNoteInTopic(params: Record<string, unknown>) {
 }
 
 export async function updateNote(primeId: string, full: Record<string, unknown>) {
-  return request(LEGACY_API, `/voicenotes/web/notes/${primeId}`, {
+  return request<BijiResp<{ data?: NoteSummary }>>(LEGACY_API, `/voicenotes/web/notes/${primeId}`, {
     method: "PUT",
     body: full,
   });
 }
 
 export async function deleteNote(primeId: string) {
-  return request(LEGACY_API, `/voicenotes/web/notes/${primeId}`, {
+  return request<BijiResp<{ note_id?: string }>>(LEGACY_API, `/voicenotes/web/notes/${primeId}`, {
     method: "DELETE",
   });
 }
@@ -293,7 +299,7 @@ export async function moveToDirectory(resourceIds: string[], directoryId: string
  * @param topicId     numeric topic id
  */
 export async function removeResourceFromTopic(resourceId: number | string, topicId: number | string) {
-  return request(OPEN_API, "/v1/web/topic/resource/delete", {
+  return request<BijiResp<unknown>>(OPEN_API, "/v1/web/topic/resource/delete", {
     method: "DELETE",
     body: { id: Number(resourceId), topic_id: Number(topicId) },
   });
@@ -306,7 +312,7 @@ export async function moveResourceToTopic(
   targetTopicId: number | string,
   targetDirectoryId: number | string,
 ) {
-  return request(OPEN_API, "/v1/web/topic/resource/move/topic", {
+  return request<BijiResp<unknown>>(OPEN_API, "/v1/web/topic/resource/move/topic", {
     method: "POST",
     body: {
       resource_id: Number(resourceId),
@@ -332,7 +338,7 @@ export async function importNotesToTopic(
   directoryId: number | string,
 ) {
   const ids = Array.isArray(noteIds) ? noteIds.join(",") : noteIds;
-  return request(LEGACY_API, "/voicenotes/web/topics/import/notes", {
+  return request<BijiResp<string>>(LEGACY_API, "/voicenotes/web/topics/import/notes", {
     method: "POST",
     body: { ids, topic_id: Number(topicId), directory_id: Number(directoryId) },
   });
@@ -807,10 +813,11 @@ export async function searchKnowledgeBooks(query: string, page = 1, pageSize = 2
  * `config.file_max_size`, `last_update_time_desc`, etc.
  */
 export async function listKbManagedTopics(page = 1, size = 50, isSelection = 0) {
-  return request(OPEN_API, "/v1/web/topic/list/manager", {
-    params: { is_selection: isSelection, page, size },
-    extraHeaders: { "X-Av": "1.2.2" },
-  });
+  return request<BijiResp<{ count?: number; has_more?: boolean; list?: KbTopic[] }>>(
+    OPEN_API,
+    "/v1/web/topic/list/manager",
+    { params: { is_selection: isSelection, page, size }, extraHeaders: { "X-Av": "1.2.2" } },
+  );
 }
 
 /**
@@ -824,7 +831,7 @@ export async function listKbTopicResources(
   directoryId: number | string,
   options: { page?: number; sort?: string; resourceType?: number } = {},
 ) {
-  return request(OPEN_API, "/v1/web/topic/resource/list/mix", {
+  return request<BijiResp<unknown>>(OPEN_API, "/v1/web/topic/resource/list/mix", {
     params: {
       topic_id: -1,
       topic_id_alias: topicIdAlias,

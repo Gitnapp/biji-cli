@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { getNote } from "../api.js";
+import { getNoteFromLegacy } from "@biji/client";
 
 export function registerGetCommand(program: Command): void {
   program
@@ -8,7 +8,7 @@ export function registerGetCommand(program: Command): void {
     .option("--json", "output raw API response")
     .option("--content-only", "print only the markdown content")
     .action(async (id: string, opts: { json?: boolean; contentOnly?: boolean }) => {
-      const res = await getNote(id);
+      const res = await getNoteFromLegacy(id);
       if (opts.json) {
         console.log(JSON.stringify(res, null, 2));
         return;

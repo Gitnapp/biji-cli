@@ -1,29 +1,7 @@
 import { Command } from "commander";
 import * as fs from "fs";
-import * as os from "os";
-import * as path from "path";
-import { spawnSync } from "child_process";
-import { createNote } from "../api.js";
-
-async function readStdin(): Promise<string> {
-  if (process.stdin.isTTY) return "";
-  const chunks: Buffer[] = [];
-  for await (const chunk of process.stdin) chunks.push(chunk as Buffer);
-  return Buffer.concat(chunks).toString("utf-8");
-}
-
-function openEditor(): string {
-  const editor = process.env.EDITOR || process.env.VISUAL || "vi";
-  const tmp = path.join(os.tmpdir(), `biji-${Date.now()}.md`);
-  fs.writeFileSync(tmp, "# \n\n");
-  try {
-    const r = spawnSync(editor, [tmp], { stdio: "inherit" });
-    if (r.status !== 0) throw new Error(`editor exited with status ${r.status}`);
-    return fs.readFileSync(tmp, "utf-8");
-  } finally {
-    try { fs.unlinkSync(tmp); } catch {}
-  }
-}
+import { createMarkdownNote } from "@biji/client";
+import { readStdin, openEditor } from "../io.js";
 
 export function registerWriteCommand(program: Command): void {
   program
@@ -40,12 +18,12 @@ export function registerWriteCommand(program: Command): void {
         const piped = await readStdin();
         if (piped.trim()) body = piped;
       }
-      if (!body) body = openEditor();
+      if (!body) body = openEditor("# \n\n");
       if (!body || !body.trim()) {
         console.error("No content provided.");
         process.exit(1);
       }
-      const res = await createNote({ content: body, title: opts.title, topic_id: opts.topic });
+      const res = await createMarkdownNote({ content: body, title: opts.title, topic_id: opts.topic, tags: [] });
       if (opts.json) {
         console.log(JSON.stringify(res, null, 2));
         return;

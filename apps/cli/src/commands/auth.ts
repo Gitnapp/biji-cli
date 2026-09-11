@@ -1,7 +1,28 @@
 import { Command } from "commander";
 import * as readline from "readline";
-import { authStatus, setAuth, getAuth, AuthInfo } from "../auth.js";
-import { getUserInfo } from "../api.js";
+import { authStatus as rawAuthStatus, setAuth, getAuth, getUserInfo, type AuthInfo } from "@biji/client";
+import { readStdin } from "../io.js";
+
+/** Human-readable status string for `biji auth status` and `biji doctor`. */
+export function formatAuthStatus(): string {
+  const s = rawAuthStatus();
+  if (!s.authenticated) return "Not authenticated. Run: biji auth set";
+  const auth = getAuth();
+  const lines: string[] = [`Token: ${s.token_preview}`];
+  if (s.jwt_expire_in_seconds !== undefined) {
+    const min = Math.floor(s.jwt_expire_in_seconds / 60);
+    lines.push(`JWT expires in: ${min} min${min < 0 ? " (EXPIRED — will auto-refresh)" : ""}`);
+  } else {
+    lines.push("JWT expiry: unknown");
+  }
+  if (auth.refresh_token && s.refresh_expire_in_seconds !== undefined) {
+    const day = Math.floor(s.refresh_expire_in_seconds / 86400);
+    lines.push(`Refresh token expires in: ${day} days${day < 0 ? " (EXPIRED — re-login needed)" : ""}`);
+  } else {
+    lines.push("Refresh token: not set");
+  }
+  return lines.join("\n");
+}
 
 const SNIPPET = `copy(JSON.stringify({
   token: localStorage.getItem("token"),
@@ -33,13 +54,6 @@ ${indent(SNIPPET)}
              Any OS:   biji auth login --json '<paste>'
              Or:       just paste below ↓
 `);
-}
-
-async function readPipedStdin(): Promise<string> {
-  if (process.stdin.isTTY) return "";
-  const chunks: Buffer[] = [];
-  for await (const chunk of process.stdin) chunks.push(chunk as Buffer);
-  return Buffer.concat(chunks).toString("utf-8");
 }
 
 async function promptForJson(): Promise<string> {
@@ -74,7 +88,7 @@ async function applyAuth(auth: AuthInfo): Promise<void> {
   const refDay = Math.floor((auth.refresh_token_expire_at - now) / 86400);
   try {
     const info = await getUserInfo();
-    const uid = info?.c && (info.c as { data?: { uid?: number } }).data?.uid;
+    const uid = info?.c?.data?.uid;
     console.log(`✓ Auth saved. uid=${uid ?? "unknown"}, JWT ${jwtMin}min, refresh ${refDay}d.`);
   } catch (err) {
     console.error(`Auth saved but verification failed: ${(err as Error).message}`);
@@ -88,7 +102,7 @@ export function registerAuthCommands(program: Command): void {
   auth
     .command("status")
     .description("Show current auth status")
-    .action(() => console.log(authStatus()));
+    .action(() => console.log(formatAuthStatus()));
 
   auth
     .command("login [json]")
@@ -96,7 +110,7 @@ export function registerAuthCommands(program: Command): void {
     .description("Log in by pasting auth JSON. Prints a guided tutorial when no input given.")
     .option("--json <json>", "auth JSON string (alternative to positional/stdin)")
     .action(async (positional: string | undefined, opts: { json?: string }) => {
-      const piped = await readPipedStdin();
+      const piped = await readStdin();
       let raw = positional || opts.json || piped;
 
       if (!raw.trim()) {

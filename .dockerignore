@@ -1,0 +1,12 @@
+node_modules
+**/node_modules
+**/dist
+.git
+scripts/capture
+**/*.tsbuildinfo
+.env*
+**/*.log
+.DS_Store
+.claude
+Dockerfile
+compose.yaml

@@ -1,29 +1,7 @@
 import { Command } from "commander";
 import * as fs from "fs";
-import * as os from "os";
-import * as path from "path";
-import { spawnSync } from "child_process";
-import { getNote, updateNote, NoteSummary, markdownToTipTap } from "../api.js";
-
-async function readStdin(): Promise<string> {
-  if (process.stdin.isTTY) return "";
-  const chunks: Buffer[] = [];
-  for await (const chunk of process.stdin) chunks.push(chunk as Buffer);
-  return Buffer.concat(chunks).toString("utf-8");
-}
-
-function editInEditor(initial: string, suffix = ".md"): string {
-  const editor = process.env.EDITOR || process.env.VISUAL || "vi";
-  const tmp = path.join(os.tmpdir(), `biji-edit-${Date.now()}${suffix}`);
-  fs.writeFileSync(tmp, initial);
-  try {
-    const r = spawnSync(editor, [tmp], { stdio: "inherit" });
-    if (r.status !== 0) throw new Error(`editor exited with status ${r.status}`);
-    return fs.readFileSync(tmp, "utf-8");
-  } finally {
-    try { fs.unlinkSync(tmp); } catch {}
-  }
-}
+import { getNoteFromLegacy, updateNote, type NoteSummary, markdownToTipTap } from "@biji/client";
+import { readStdin, openEditor } from "../io.js";
 
 export function registerEditCommand(program: Command): void {
   program
@@ -35,7 +13,7 @@ export function registerEditCommand(program: Command): void {
     .option("-t, --title <title>", "set new title")
     .option("--json", "output raw API response")
     .action(async (id: string, opts: { append?: string; replace?: string; file?: string; title?: string; json?: boolean }) => {
-      const fetched = await getNote(id);
+      const fetched = await getNoteFromLegacy(id);
       const cRaw = fetched?.c as Record<string, unknown> | undefined;
       const note = ((cRaw?.data as NoteSummary | undefined) ?? (cRaw as NoteSummary | undefined));
       if (!note?.prime_id) {
@@ -55,7 +33,7 @@ export function registerEditCommand(program: Command): void {
         if (piped.trim()) {
           newContent = piped;
         } else {
-          newContent = editInEditor(note.content ?? "");
+          newContent = openEditor(note.content ?? "");
         }
       }
 

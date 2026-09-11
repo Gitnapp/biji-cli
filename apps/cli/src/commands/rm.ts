@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { deleteNote } from "../api.js";
+import { deleteNote } from "@biji/client";
 
 async function deleteOne(id: string, json: boolean): Promise<boolean> {
   const res = await deleteNote(id);

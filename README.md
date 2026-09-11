@@ -7,15 +7,18 @@ biji.com (Get笔记) 客户端套件 monorepo —— 共享 SDK + CLI + MCP serv
 ```
 .
 ├── apps/
-│   ├── cli/          @biji/cli       终端命令行 (biji)
-│   └── mcp/          biji-mcp    stdio MCP server (npx biji-mcp)
+│   ├── cli/            @biji/cli     终端命令行 (biji)；src/commands/* 每个子命令一个文件
+│   └── mcp/            biji-mcp      stdio MCP server；src/tools/* 按领域分组的 100 个工具
 ├── packages/
-│   └── biji-client/  @biji/client  共享 SDK：HTTP + JWT 自动刷新 + SSE 流
-├── pnpm-workspace.yaml
-└── tsconfig.base.json
+│   ├── biji-client/    @biji/client  SDK：client.ts (HTTP/SSE) · auth.ts · api.ts (~117 端点)
+│   │                                 · flows.ts (跨端复用的业务流程) · markdown.ts (md → TipTap)
+│   └── biji-queue/     @biji/queue   本地 SQLite 队列 + 后台 worker
+├── scripts/capture/    抓包脚本（不在 workspace 内，仅开发用）
+├── Dockerfile · compose.yaml · .dockerignore
+└── pnpm-workspace.yaml · tsconfig.base.json
 ```
 
-依赖关系：`@biji/cli` 和 `biji-mcp` 都通过 `workspace:*` 引用 `@biji/client`，后者集中管理 ~117 个 biji.com 端点函数和 auth 状态。新端点都从浏览器抓包逆向得到（见下文「逆向新端点」）。
+分层规则：`api.ts` 只放一对一的端点函数；需要多步组合的操作（媒体上传三步、KB 别名解析、note_id → resource_id 映射、markdown 建笔记、链接解析摘要）统一放在 `flows.ts`，CLI / MCP / queue 三端都直接调用它，不各自复制一份。`@biji/cli`、`biji-mcp`、`@biji/queue` 都通过 `workspace:*` 引用 `@biji/client`。新端点都从浏览器抓包逆向得到（见下文「逆向新端点」）。
 
 ## 安装与构建
 
@@ -251,6 +254,26 @@ biji doctor --json         # 机器可读；任一 ✗ 检查则 exit 1（适合
 
 biji --ai                  # 打印面向 AI agent 的精简用法手册（等价 `biji ai`），让助手一次读懂全部命令
 ```
+
+## Docker
+
+一个镜像同时提供 `biji` 和 `biji-mcp` 两个命令，基于 `node:22-bookworm-slim`（glibc，better-sqlite3 直接用预编译二进制）。运行状态（auth.json、队列数据库）统一挂在 `/root/.config/get-biji`，本地文件通过 `/work` 挂载进去。
+
+```bash
+docker build -t biji .
+
+# CLI：先登录（auth 落到 named volume）
+docker run -it --rm -v biji-config:/root/.config/get-biji biji biji auth login
+docker run --rm -v biji-config:/root/.config/get-biji biji biji search "关键词"
+docker run --rm -v biji-config:/root/.config/get-biji -v "$PWD":/work biji biji upload podcast.mp3
+
+# MCP server（stdio，需要 -i）
+docker run -i --rm -v biji-config:/root/.config/get-biji -v "$PWD":/work biji biji-mcp
+```
+
+MCP 客户端配置里把 `command` 写成 `docker`、`args` 写成上面那串参数即可。
+
+`compose.yaml` 里有两个服务：`mcp`（`docker compose run --rm mcp biji <cmd>`）和 `worker`。后者是队列的专用常驻进程：容器里 `biji queue add` fork 出来的 worker 会随 PID 1 一起退出，所以必须单独跑一个服务；它空闲 5 分钟自动退出，由 compose 的 `restart: unless-stopped` 拉起。另外 PID 文件不跨容器，从别的容器跑 `biji queue status` 会显示 worker「not running」，这是预期行为。
 
 ## 发布到 npm
 
