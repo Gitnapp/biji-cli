@@ -2,7 +2,7 @@
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import * as api from "@biji/client";
+import * as api from "@gitnapp/biji-client";
 import * as auth from "./tools/auth.js";
 import * as notes from "./tools/notes.js";
 import * as topics from "./tools/topics.js";

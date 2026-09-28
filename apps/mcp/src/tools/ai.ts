@@ -1,6 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import * as api from "@biji/client";
+import * as api from "@gitnapp/biji-client";
 import { json } from "../respond.js";
 
 export function register(server: McpServer): void {

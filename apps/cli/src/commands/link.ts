@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { analyzeLink } from "@biji/client";
+import { analyzeLink } from "@gitnapp/biji-client";
 
 interface LinkCmdOpts {
   quiet?: boolean;

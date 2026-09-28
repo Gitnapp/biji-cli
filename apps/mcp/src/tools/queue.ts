@@ -1,6 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import * as queue from "@biji/queue";
+import * as queue from "@gitnapp/biji-queue";
 import { json } from "../respond.js";
 
 // ──────────────────── Queue (background batch jobs) ────────────────────
@@ -8,7 +8,7 @@ import { json } from "../respond.js";
 // Submit lots of URLs (or files) at once, return immediately, and let a
 // local background worker process them serially-with-concurrency-3 against
 // biji.com. Deduplication, retries with exponential backoff, and a per-job
-// timeout are handled inside @biji/queue. The worker is a separate detached
+// timeout are handled inside @gitnapp/biji-queue. The worker is a separate detached
 // process so this MCP server can exit and the worker keeps going.
 
 export function register(server: McpServer): void {

@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import * as fs from "fs";
-import { getNoteFromLegacy, updateNote, type NoteSummary, markdownToTipTap } from "@biji/client";
+import { getNoteFromLegacy, updateNote, type NoteSummary, markdownToTipTap } from "@gitnapp/biji-client";
 import { readStdin, openEditor } from "../io.js";
 
 export function registerEditCommand(program: Command): void {

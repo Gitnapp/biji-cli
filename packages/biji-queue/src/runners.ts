@@ -1,4 +1,4 @@
-import { analyzeLink, resolveKbTopic, uploadLocalMedia } from "@biji/client";
+import { analyzeLink, resolveKbTopic, uploadLocalMedia } from "@gitnapp/biji-client";
 import type { JobResult, LinkPayload, UploadPayload } from "./types.js";
 
 /**

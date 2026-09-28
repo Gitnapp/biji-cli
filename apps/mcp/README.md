@@ -1,10 +1,10 @@
-# biji-mcp
+# @gitnapp/biji-mcp
 
 stdio MCP server for Get笔记 (biji.com). ~81 note/KB/chat/upload/export tools + 6 queue tools.
 
 ```bash
-npx -y biji-mcp
+npx -y @gitnapp/biji-mcp
 ```
 
-Auth: run `biji auth login` (from the `@biji/cli` package) to populate `~/.config/get-biji/auth.json`.
+Auth: run `biji auth login` (from the `@gitnapp/biji-cli` package) to populate `~/.config/get-biji/auth.json`.
 See the monorepo README for the full tool list.

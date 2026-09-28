@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { searchNotes } from "@biji/client";
+import { searchNotes } from "@gitnapp/biji-client";
 
 function snippet(s: string | undefined, max = 100): string {
   if (!s) return "";

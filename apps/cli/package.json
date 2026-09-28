@@ -1,5 +1,5 @@
 {
-  "name": "@biji/cli",
+  "name": "@gitnapp/biji-cli",
   "version": "0.1.0",
   "description": "CLI for Get笔记 (biji.com) — write / link / search / edit notes from your terminal",
   "main": "dist/cli.js",
@@ -8,11 +8,11 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Gitnapp/get-biji-api.git",
+    "url": "git+https://github.com/Gitnapp/biji-cli.git",
     "directory": "apps/cli"
   },
-  "homepage": "https://github.com/Gitnapp/get-biji-api/tree/main/apps/cli#readme",
-  "bugs": "https://github.com/Gitnapp/get-biji-api/issues",
+  "homepage": "https://github.com/Gitnapp/biji-cli/tree/main/apps/cli#readme",
+  "bugs": "https://github.com/Gitnapp/biji-cli/issues",
   "publishConfig": {
     "access": "public"
   },
@@ -42,8 +42,8 @@
     "node": ">=22.13.0"
   },
   "dependencies": {
-    "@biji/client": "workspace:*",
-    "@biji/queue": "workspace:*",
+    "@gitnapp/biji-client": "workspace:*",
+    "@gitnapp/biji-queue": "workspace:*",
     "commander": "^12.1.0"
   },
   "devDependencies": {

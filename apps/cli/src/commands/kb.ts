@@ -10,7 +10,7 @@ import {
   removeResourceFromTopic,
   resolveKbTopic,
   resolveNoteIdsToResourceIds,
-} from "@biji/client";
+} from "@gitnapp/biji-client";
 import { readStdin } from "../io.js";
 
 export function registerKbCommand(program: Command): void {

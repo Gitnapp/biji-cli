@@ -1,4 +1,4 @@
-# get-biji-api
+# biji-cli
 
 biji.com (Get笔记) 客户端套件 monorepo —— 共享 SDK + CLI + MCP server。
 
@@ -7,24 +7,24 @@ biji.com (Get笔记) 客户端套件 monorepo —— 共享 SDK + CLI + MCP serv
 ```
 .
 ├── apps/
-│   ├── cli/            @biji/cli     终端命令行 (biji)；src/commands/* 每个子命令一个文件
-│   ├── mcp/            biji-mcp      stdio MCP server；src/tools/* 按领域分组的 100 个工具
-│   └── bin/            @biji/bin     单文件可执行入口（private）：CLI + `biji mcp` + 队列 worker
+│   ├── cli/            @gitnapp/biji-cli     终端命令行 (biji)；src/commands/* 每个子命令一个文件
+│   ├── mcp/            @gitnapp/biji-mcp     stdio MCP server；src/tools/* 按领域分组的 100 个工具
+│   └── bin/            @gitnapp/biji-bin     单文件可执行入口（private）：CLI + `biji mcp` + 队列 worker
 ├── packages/
-│   ├── biji-client/    @biji/client  SDK：client.ts (HTTP/SSE) · auth.ts · api.ts (~117 端点)
-│   │                                 · flows.ts (跨端复用的业务流程) · markdown.ts (md → TipTap)
-│   └── biji-queue/     @biji/queue   本地 SQLite 队列 + 后台 worker
+│   ├── biji-client/    @gitnapp/biji-client  SDK：client.ts (HTTP/SSE) · auth.ts · api.ts (~117 端点)
+│   │                                         · flows.ts (跨端复用的业务流程) · markdown.ts (md → TipTap)
+│   └── biji-queue/     @gitnapp/biji-queue   本地 SQLite 队列 + 后台 worker
 ├── scripts/build-bin.mjs  用 bun 把 apps/bin 编译成各平台单文件二进制
 ├── scripts/capture/    抓包脚本（不在 workspace 内，仅开发用）
 ├── Dockerfile · compose.yaml · .dockerignore
 └── pnpm-workspace.yaml · tsconfig.base.json
 ```
 
-分层规则：`api.ts` 只放一对一的端点函数；需要多步组合的操作（媒体上传三步、KB 别名解析、note_id → resource_id 映射、markdown 建笔记、链接解析摘要）统一放在 `flows.ts`，CLI / MCP / queue 三端都直接调用它，不各自复制一份。`@biji/cli`、`biji-mcp`、`@biji/queue` 都通过 `workspace:*` 引用 `@biji/client`。新端点都从浏览器抓包逆向得到（见下文「逆向新端点」）。
+分层规则：`api.ts` 只放一对一的端点函数；需要多步组合的操作（媒体上传三步、KB 别名解析、note_id → resource_id 映射、markdown 建笔记、链接解析摘要）统一放在 `flows.ts`，CLI / MCP / queue 三端都直接调用它，不各自复制一份。`@gitnapp/biji-cli`、`@gitnapp/biji-mcp`、`@gitnapp/biji-queue` 都通过 `workspace:*` 引用 `@gitnapp/biji-client`。新端点都从浏览器抓包逆向得到（见下文「逆向新端点」）。
 
 ## 安装与构建
 
-需要 `pnpm@10+` 和 `node@22.13+`（队列用内置的 `node:sqlite`；只用 `@biji/client` SDK 的话 Node 18 即可）。
+需要 `pnpm@10+` 和 `node@22.13+`（队列用内置的 `node:sqlite`；只用 `@gitnapp/biji-client` SDK 的话 Node 18 即可）。
 
 ```bash
 pnpm install
@@ -63,7 +63,7 @@ node scripts/build-bin.mjs linux-arm64 darwin-arm64   # 指定目标（需先 pn
 构建后通过 `node apps/cli/dist/cli.js <command>` 调用，或将其链接为 `biji`：
 
 ```bash
-npm link --workspace @biji/cli   # 然后直接用 biji
+npm link --workspace @gitnapp/biji-cli   # 然后直接用 biji
 ```
 
 ### 认证
@@ -236,7 +236,7 @@ REPL 内：`/quit` 退出，`/reset` 清空上下文（重置 parent_id）。
 
 ```bash
 biji setup add claude-code        # 也支持 claude-desktop / cursor / windsurf / cline / gemini
-biji setup add cursor --npx       # 用已发布的 `npx -y biji-mcp` 形式（默认用本地构建的绝对路径）
+biji setup add cursor --npx       # 用已发布的 `npx -y @gitnapp/biji-mcp` 形式（默认用本地构建的绝对路径）
 biji setup list                   # 看所有客户端的配置路径 + 是否已配置
 biji setup remove claude-code     # 移除（同样先备份）
 
@@ -247,7 +247,7 @@ biji setup add --file <config.json> --key mcpServers
 默认写入的是「绝对 node 路径 + 本地 `apps/mcp/dist/index.js`」（对 Claude Desktop 这类不继承 shell PATH 的 GUI 应用最稳）。发布到 npm 后可改用 `--npx`，对应：
 
 ```bash
-npx -y biji-mcp
+npx -y @gitnapp/biji-mcp
 ```
 
 ### 手动配置
@@ -259,7 +259,7 @@ npx -y biji-mcp
   "mcpServers": {
     "get-biji": {
       "command": "npx",
-      "args": ["-y", "biji-mcp"]
+      "args": ["-y", "@gitnapp/biji-mcp"]
     }
   }
 }
@@ -302,22 +302,22 @@ MCP 客户端配置里把 `command` 写成 `docker`、`args` 写成上面那串�
 
 ## 发布到 npm
 
-四个包都可发布（`publishConfig.access=public` 已设）。注意几个前提，否则 `npx biji-mcp` 装不起来：
+四个包都可发布（`publishConfig.access=public` 已设）。注意几个前提，否则 `npx @gitnapp/biji-mcp` 装不起来：
 
-1. **`@biji` scope 归属**：`@biji/client` / `@biji/queue` / `@biji/cli` 是 scoped 包，发布前需在 npm 上创建并拥有 `@biji` org（或改成你自己的 username scope）。`biji-mcp` 是 unscoped（`get-biji-mcp` 已被他人占用，故改名）。
-2. **依赖顺序**：`pnpm pack/publish` 会把 `workspace:*` 改写成当前精确版本（如 `@biji/client@0.1.0`），所以必须**先发依赖再发上层**：`@biji/client` → `@biji/queue` → `biji-mcp` / `@biji/cli`。四包版本保持一致（当前都是 0.1.0），bump 时一起 re-pack 避免悬空精确 pin。
-3. **Node 版本**：`@biji/queue` 用 Node 内置的 `node:sqlite`（无原生模块，不需要编译工具链），要求 **Node ≥22.13**。MCP server 对此做了降级——更老的 Node 上只有 7 个 queue 工具不可用，其余 ~93 个工具照常启动（见 `packages/biji-queue/src/store.ts` 的惰性加载）。
+1. **scope 归属**：四个包都在 npm 用户 `gitnapp` 的个人 scope 下（`@gitnapp/*`），需用该账号 `npm login` 后发布。未带 scope 的 `biji-cli` 已被他人占用，所以统一用个人 scope。
+2. **依赖顺序**：`pnpm pack/publish` 会把 `workspace:*` 改写成当前精确版本（如 `@gitnapp/biji-client@0.1.0`），所以必须**先发依赖再发上层**：`@gitnapp/biji-client` → `@gitnapp/biji-queue` → `@gitnapp/biji-mcp` / `@gitnapp/biji-cli`。四包版本保持一致（当前都是 0.1.0），bump 时一起 re-pack 避免悬空精确 pin。
+3. **Node 版本**：`@gitnapp/biji-queue` 用 Node 内置的 `node:sqlite`（无原生模块，不需要编译工具链），要求 **Node ≥22.13**。MCP server 对此做了降级——更老的 Node 上只有 7 个 queue 工具不可用，其余 ~93 个工具照常启动（见 `packages/biji-queue/src/store.ts` 的惰性加载）。
 
 ```bash
 npm login
-pnpm --filter @biji/client publish
-pnpm --filter @biji/queue  publish
-pnpm --filter biji-mcp     publish
-pnpm --filter @biji/cli    publish
-# dry-run 验证打包内容（不真发）：pnpm --filter biji-mcp pack
+pnpm --filter @gitnapp/biji-client publish
+pnpm --filter @gitnapp/biji-queue  publish
+pnpm --filter @gitnapp/biji-mcp    publish
+pnpm --filter @gitnapp/biji-cli    publish
+# dry-run 验证打包内容（不真发）：pnpm --filter @gitnapp/biji-mcp pack
 ```
 
-## @biji/client SDK 集成
+## @gitnapp/biji-client SDK 集成
 
 如果你想在自己的 Node.js 工程里直接调用 biji API：
 
@@ -325,7 +325,7 @@ pnpm --filter @biji/cli    publish
 import {
   loadAuth, setAuthStorage, FileAuthStorage, MemoryAuthStorage,
   searchNotes, createNote, yodaChatStream,
-} from "@biji/client";
+} from "@gitnapp/biji-client";
 
 // 1. 选择 auth storage（CLI/桌面用 File，HTTP server 用 Memory）
 setAuthStorage(new FileAuthStorage());     // 默认就是它
