@@ -12,3 +12,6 @@ dist/
 
 # capture profile + jsonl logs live in /tmp; only node_modules inside capture/ needs ignoring
 # (covered by top-level node_modules/ rule)
+
+# standalone binaries from scripts/build-bin.mjs
+release/

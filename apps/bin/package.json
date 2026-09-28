@@ -1,0 +1,22 @@
+{
+  "name": "@biji/bin",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Single-executable entry: `biji` CLI + `biji mcp` server + queue worker in one binary",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc",
+    "compile": "node ../../scripts/build-bin.mjs"
+  },
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@biji/cli": "workspace:*",
+    "@biji/queue": "workspace:*",
+    "biji-mcp": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.9.3"
+  }
+}

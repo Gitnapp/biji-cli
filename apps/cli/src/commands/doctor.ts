@@ -3,7 +3,7 @@ import * as fs from "fs";
 import { authStatus, FileAuthStorage, getUserInfo } from "@biji/client";
 import { counts, isWorkerAlive, dbPath, logPath } from "@biji/queue";
 import { formatAuthStatus } from "./auth.js";
-import { allStatuses, localMcpEntry } from "../mcp-targets.js";
+import { allStatuses, isSelfHosted, localMcpEntry } from "../mcp-targets.js";
 
 type Level = "ok" | "warn" | "fail";
 
@@ -18,22 +18,31 @@ const ICON: Record<Level, string> = { ok: "✓", warn: "⚠", fail: "✗" };
 async function runChecks(opts: { offline?: boolean }): Promise<Check[]> {
   const checks: Check[] = [];
 
-  // 1. Node version
-  const major = Number(process.versions.node.split(".")[0]);
-  checks.push({
-    name: "Node.js",
-    level: major >= 18 ? "ok" : "fail",
-    detail: `v${process.versions.node}${major >= 18 ? "" : " (need >=18)"}`,
-  });
+  // 1. Runtime version (node:sqlite, used by the queue, needs Node >=22.13)
+  if (isSelfHosted()) {
+    checks.push({ name: "Runtime", level: "ok", detail: `standalone binary (${process.execPath})` });
+  } else {
+    const [major, minor] = process.versions.node.split(".").map(Number);
+    const okVer = major > 22 || (major === 22 && minor >= 13);
+    checks.push({
+      name: "Node.js",
+      level: okVer ? "ok" : "warn",
+      detail: `v${process.versions.node}${okVer ? "" : " (queue needs >=22.13)"}`,
+    });
+  }
 
   // 2. MCP server build
-  const entry = localMcpEntry();
-  const built = fs.existsSync(entry);
-  checks.push({
-    name: "MCP build",
-    level: built ? "ok" : "warn",
-    detail: built ? entry : `${entry} missing — run \`pnpm -r build\``,
-  });
+  if (isSelfHosted()) {
+    checks.push({ name: "MCP build", level: "ok", detail: `built in (\`${process.execPath} mcp\`)` });
+  } else {
+    const entry = localMcpEntry();
+    const built = fs.existsSync(entry);
+    checks.push({
+      name: "MCP build",
+      level: built ? "ok" : "warn",
+      detail: built ? entry : `${entry} missing — run \`pnpm -r build\``,
+    });
+  }
 
   // 3. Auth credentials
   const s = formatAuthStatus();

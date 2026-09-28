@@ -4,6 +4,7 @@ import {
   TARGETS,
   SERVER_NAME,
   findTarget,
+  isSelfHosted,
   localMcpEntry,
   resolveServerSpec,
   installServer,
@@ -19,7 +20,7 @@ function knownIds(): string {
 
 function warnIfUnbuilt(spec: McpServerSpec): void {
   // The local-node spec points at apps/mcp/dist/index.js; warn early if it's missing.
-  if (spec.command !== "npx" && !fs.existsSync(localMcpEntry())) {
+  if (spec.command !== "npx" && !isSelfHosted() && !fs.existsSync(localMcpEntry())) {
     console.warn(`⚠ MCP server not built yet: ${localMcpEntry()}`);
     console.warn("  Run `pnpm -r build` so the configured server can start.\n");
   }

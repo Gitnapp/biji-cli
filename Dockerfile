@@ -9,6 +9,7 @@ RUN corepack enable && corepack prepare pnpm@10.31.0 --activate
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
 COPY apps/cli/package.json apps/cli/package.json
 COPY apps/mcp/package.json apps/mcp/package.json
+COPY apps/bin/package.json apps/bin/package.json
 COPY packages/biji-client/package.json packages/biji-client/package.json
 COPY packages/biji-queue/package.json packages/biji-queue/package.json
 
@@ -22,7 +23,7 @@ RUN pnpm -r build
 # the already-populated local store is the only variant that actually
 # strips them.
 RUN rm -rf node_modules apps/cli/node_modules apps/mcp/node_modules \
-  packages/biji-client/node_modules packages/biji-queue/node_modules \
+  apps/bin/node_modules packages/biji-client/node_modules packages/biji-queue/node_modules \
   && pnpm install --prod --frozen-lockfile --offline
 
 # ---- runtime ----

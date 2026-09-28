@@ -1,36 +1,56 @@
-import type Database from "better-sqlite3";
+import type { DatabaseSync } from "node:sqlite";
 import { dbPath } from "./paths.js";
 import type { Job, JobKind, JobPayload, JobResult, JobStatus, LinkPayload, UploadPayload } from "./types.js";
 
-let _db: Database.Database | null = null;
-let _driver: typeof import("better-sqlite3") | null = null;
+let _db: DatabaseSync | null = null;
 
 /**
- * Lazy-load the better-sqlite3 native addon. Importing it at module scope would
- * crash any consumer that never touches the queue (e.g. the MCP server's other
- * ~93 tools) when no prebuilt binary matches the host Node ABI. Loading it here
- * means only queue operations pay that cost — and fail with a clear message.
+ * Lazy-load the built-in `node:sqlite` driver (Node >=22.13, also provided by
+ * Bun). Loading it here rather than at module scope means consumers that never
+ * touch the queue (e.g. the MCP server's other ~93 tools) keep working on an
+ * older runtime — only queue operations fail, with a clear message.
  */
-function loadDriver(): typeof import("better-sqlite3") {
-  if (_driver) return _driver;
+function loadDriver(): typeof import("node:sqlite") {
+  // node:sqlite still emits an ExperimentalWarning on some Node versions; it
+  // would pollute every CLI queue command's stderr, so swallow just that one.
+  const emit = process.emitWarning;
+  process.emitWarning = ((w: string | Error, ...rest: unknown[]) => {
+    const msg = typeof w === "string" ? w : w.message;
+    if (/sqlite/i.test(msg)) return;
+    return (emit as (...a: unknown[]) => void).call(process, w, ...rest);
+  }) as typeof process.emitWarning;
   try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
-    _driver = require("better-sqlite3") as typeof import("better-sqlite3");
-    return _driver;
+    return require("node:sqlite") as typeof import("node:sqlite");
   } catch (e) {
     throw new Error(
-      `queue subsystem unavailable: better-sqlite3 failed to load (${(e as Error).message}). ` +
-      `Use a Node version with prebuilt binaries (18-22) or install a C++ toolchain for a source build.`,
+      `queue subsystem unavailable: node:sqlite failed to load (${(e as Error).message}). ` +
+      `Use Node >=22.13 (or the standalone biji binary).`,
     );
+  } finally {
+    process.emitWarning = emit;
   }
 }
 
-export function db(): Database.Database {
+/** better-sqlite3-style transaction: BEGIN IMMEDIATE so concurrent workers serialize on the write lock. */
+function transaction<T>(d: DatabaseSync, fn: () => T): T {
+  d.exec("BEGIN IMMEDIATE");
+  try {
+    const r = fn();
+    d.exec("COMMIT");
+    return r;
+  } catch (e) {
+    d.exec("ROLLBACK");
+    throw e;
+  }
+}
+
+export function db(): DatabaseSync {
   if (_db) return _db;
-  const Driver = loadDriver();
-  _db = new Driver(dbPath());
-  _db.pragma("journal_mode = WAL");
-  _db.pragma("busy_timeout = 5000");
+  const { DatabaseSync } = loadDriver();
+  _db = new DatabaseSync(dbPath());
+  _db.exec("PRAGMA journal_mode = WAL");
+  _db.exec("PRAGMA busy_timeout = 5000");
   _db.exec(`
     CREATE TABLE IF NOT EXISTS jobs (
       id TEXT PRIMARY KEY,
@@ -64,13 +84,13 @@ export function dedupeKey(kind: JobKind, payload: JobPayload): string {
   return `${kind}:${JSON.stringify(payload)}`;
 }
 
-function migrate(d: Database.Database): void {
+function migrate(d: DatabaseSync): void {
   const cols = d.prepare("PRAGMA table_info(jobs)").all() as Array<{ name: string }>;
   if (!cols.some((c) => c.name === "dedupe_key")) {
     d.exec("ALTER TABLE jobs ADD COLUMN dedupe_key TEXT");
     const rows = d.prepare("SELECT id, kind, payload FROM jobs").all() as Array<{ id: string; kind: string; payload: string }>;
     const upd = d.prepare("UPDATE jobs SET dedupe_key = ? WHERE id = ?");
-    const tx = d.transaction(() => {
+    transaction(d, () => {
       for (const r of rows) {
         try {
           const p = JSON.parse(r.payload) as JobPayload;
@@ -80,7 +100,6 @@ function migrate(d: Database.Database): void {
         }
       }
     });
-    tx();
   }
   d.exec("CREATE INDEX IF NOT EXISTS idx_dedupe ON jobs(dedupe_key, status)");
 }
@@ -166,7 +185,7 @@ export function addJob(input: AddJobInput, opts: AddJobOptions = {}): AddJobResu
  */
 export function claimNext(): Job | null {
   const d = db();
-  const tx = d.transaction((): Job | null => {
+  return transaction(d, (): Job | null => {
     const row = d.prepare(
       "SELECT id FROM jobs WHERE status = 'pending' ORDER BY created_at ASC LIMIT 1",
     ).get() as { id?: string } | undefined;
@@ -177,7 +196,6 @@ export function claimNext(): Job | null {
     const updated = d.prepare("SELECT * FROM jobs WHERE id = ?").get(row.id) as Record<string, unknown>;
     return rowToJob(updated);
   });
-  return tx();
 }
 
 export function finishJob(id: string, result: JobResult): void {
@@ -209,7 +227,7 @@ export function resetStuckRunning(stuckThresholdMs: number): number {
   const cutoff = Date.now() - stuckThresholdMs;
   return db().prepare(
     "UPDATE jobs SET status='pending', started_at=NULL WHERE status='running' AND (started_at IS NULL OR started_at < ?)",
-  ).run(cutoff).changes;
+  ).run(cutoff).changes as number;
 }
 
 export interface CountsByStatus {
@@ -241,7 +259,7 @@ export interface ListFilter {
 
 export function listJobs(filter: ListFilter = {}): Job[] {
   let sql = "SELECT * FROM jobs WHERE 1=1";
-  const args: unknown[] = [];
+  const args: Array<string | number> = [];
   if (filter.status) { sql += " AND status = ?"; args.push(filter.status); }
   if (filter.batch_id) { sql += " AND batch_id = ?"; args.push(filter.batch_id); }
   sql += " ORDER BY created_at DESC LIMIT ?";
@@ -259,26 +277,26 @@ export function requeueFailed(ids: string[]): number {
   if (!ids.length) {
     return db().prepare(
       "UPDATE jobs SET status='pending', attempt=0, error=NULL, finished_at=NULL, started_at=NULL WHERE status='failed'",
-    ).run().changes;
+    ).run().changes as number;
   }
   const stmt = db().prepare(
     "UPDATE jobs SET status='pending', attempt=0, error=NULL, finished_at=NULL, started_at=NULL WHERE id=? AND status IN ('failed','canceled','done')",
   );
   let n = 0;
-  for (const id of ids) n += stmt.run(id).changes;
+  for (const id of ids) n += stmt.run(id).changes as number;
   return n;
 }
 
 export function cancelJob(id: string): boolean {
   return db().prepare(
     "UPDATE jobs SET status='canceled', finished_at=? WHERE id=? AND status='pending'",
-  ).run(Date.now(), id).changes > 0;
+  ).run(Date.now(), id).changes as number > 0;
 }
 
 export function clearDone(): number {
-  return db().prepare("DELETE FROM jobs WHERE status='done'").run().changes;
+  return db().prepare("DELETE FROM jobs WHERE status='done'").run().changes as number;
 }
 
 export function clearAll(): number {
-  return db().prepare("DELETE FROM jobs").run().changes;
+  return db().prepare("DELETE FROM jobs").run().changes as number;
 }

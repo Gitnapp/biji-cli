@@ -32,6 +32,17 @@ function defaultWorkerEntry(): string {
   return path.join(__dirname, "bin", "worker.js");
 }
 
+let workerArgs: string[] | null = null;
+
+/**
+ * Override the argv passed to `process.execPath` when spawning the worker.
+ * The standalone binary has no bin/worker.js on disk, so it re-invokes itself
+ * with a hidden subcommand instead (e.g. `["__queue-worker"]`).
+ */
+export function setWorkerCommand(args: string[]): void {
+  workerArgs = args;
+}
+
 export interface EnsureDaemonOptions {
   /** Override the worker entry path. Defaults to bin/worker.js next to daemon.js. */
   workerEntry?: string;
@@ -46,10 +57,10 @@ export function ensureDaemon(opts: EnsureDaemonOptions = {}): { pid: number; sta
   const cur = isWorkerAlive();
   if (cur.alive && cur.pid !== undefined) return { pid: cur.pid, started: false };
 
-  const entry = opts.workerEntry ?? defaultWorkerEntry();
+  const args = opts.workerEntry ? [opts.workerEntry] : workerArgs ?? [defaultWorkerEntry()];
   const out = fs.openSync(logPath(), "a");
   const err = fs.openSync(logPath(), "a");
-  const child = spawn(process.execPath, [entry], {
+  const child = spawn(process.execPath, args, {
     detached: true,
     stdio: ["ignore", out, err],
     env: process.env,
