@@ -10,8 +10,8 @@
  * Each target runs on import, so they are required lazily after the hooks below
  * are installed.
  */
-import { setWorkerCommand } from "@biji/queue";
-import { useSelfHostedServer } from "@biji/cli/dist/mcp-targets.js";
+import { setWorkerCommand } from "@gitnapp/biji-queue";
+import { useSelfHostedServer } from "@gitnapp/biji-cli/dist/mcp-targets.js";
 
 const WORKER_CMD = "__queue-worker";
 
@@ -21,8 +21,8 @@ useSelfHostedServer();
 const sub = process.argv[2];
 if (sub === "mcp" || sub === WORKER_CMD) {
   process.argv.splice(2, 1);
-  if (sub === "mcp") require("biji-mcp/dist/index.js");
-  else require("@biji/queue/dist/bin/worker.js");
+  if (sub === "mcp") require("@gitnapp/biji-mcp/dist/index.js");
+  else require("@gitnapp/biji-queue/dist/bin/worker.js");
 } else {
-  require("@biji/cli/dist/cli.js");
+  require("@gitnapp/biji-cli/dist/cli.js");
 }

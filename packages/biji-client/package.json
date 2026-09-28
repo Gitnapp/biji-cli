@@ -1,5 +1,5 @@
 {
-  "name": "@biji/client",
+  "name": "@gitnapp/biji-client",
   "version": "0.1.0",
   "description": "Shared API client for biji.com — HTTP, JWT auto-refresh, SSE streaming",
   "main": "dist/index.js",

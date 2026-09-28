@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import * as fs from "fs";
-import { createMarkdownNote } from "@biji/client";
+import { createMarkdownNote } from "@gitnapp/biji-client";
 import { readStdin, openEditor } from "../io.js";
 
 export function registerWriteCommand(program: Command): void {

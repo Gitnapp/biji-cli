@@ -5,7 +5,7 @@ import {
   getYodaChatMessages,
   listYodaChats,
   yodaChatStream,
-} from "@biji/client";
+} from "@gitnapp/biji-client";
 import { readStdin } from "../io.js";
 
 interface YodaSession {

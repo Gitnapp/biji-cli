@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { resolveKbTopic, uploadLocalMedia, type LocalMediaKind } from "@biji/client";
+import { resolveKbTopic, uploadLocalMedia, type LocalMediaKind } from "@gitnapp/biji-client";
 
 interface UploadOpts {
   topic?: string;

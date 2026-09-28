@@ -3,7 +3,7 @@ import {
   FileAuthStorage,
   loadAuth,
   setAuthStorage,
-} from "@biji/client";
+} from "@gitnapp/biji-client";
 import { clearPid, writePid } from "../daemon.js";
 import { runWorker } from "../worker.js";
 

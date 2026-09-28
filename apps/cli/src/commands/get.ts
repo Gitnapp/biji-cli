@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { getNoteFromLegacy } from "@biji/client";
+import { getNoteFromLegacy } from "@gitnapp/biji-client";
 
 export function registerGetCommand(program: Command): void {
   program

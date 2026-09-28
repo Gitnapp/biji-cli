@@ -49,7 +49,7 @@ Install into an AI client automatically:
   biji setup add claude-code | claude-desktop | cursor | windsurf | cline | gemini
   biji setup list                     # show config paths + current status
   biji setup add --file <config.json> # any other client (prints the snippet too)
-Run directly: npx -y biji-mcp   (or: node apps/mcp/dist/index.js)
+Run directly: npx -y @gitnapp/biji-mcp   (or: node apps/mcp/dist/index.js)
 The MCP server exposes ~81 tools (notes / tags / topics / KB / Yoda chat / AI writing
 / media upload / export / Canvas) plus 6 queue tools sharing the CLI's daemon.
 

@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { listRecycledNotes, recycleOpBatch, recycleClear } from "@biji/client";
+import { listRecycledNotes, recycleOpBatch, recycleClear } from "@gitnapp/biji-client";
 
 interface RecycledNote {
   note_id?: string;

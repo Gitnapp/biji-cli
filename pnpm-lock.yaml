@@ -14,15 +14,15 @@ importers:
 
   apps/bin:
     dependencies:
-      '@biji/cli':
+      '@gitnapp/biji-cli':
         specifier: workspace:*
         version: link:../cli
-      '@biji/queue':
-        specifier: workspace:*
-        version: link:../../packages/biji-queue
-      biji-mcp:
+      '@gitnapp/biji-mcp':
         specifier: workspace:*
         version: link:../mcp
+      '@gitnapp/biji-queue':
+        specifier: workspace:*
+        version: link:../../packages/biji-queue
     devDependencies:
       '@types/node':
         specifier: ^22.10.0
@@ -33,10 +33,10 @@ importers:
 
   apps/cli:
     dependencies:
-      '@biji/client':
+      '@gitnapp/biji-client':
         specifier: workspace:*
         version: link:../../packages/biji-client
-      '@biji/queue':
+      '@gitnapp/biji-queue':
         specifier: workspace:*
         version: link:../../packages/biji-queue
       commander:
@@ -55,10 +55,10 @@ importers:
 
   apps/mcp:
     dependencies:
-      '@biji/client':
+      '@gitnapp/biji-client':
         specifier: workspace:*
         version: link:../../packages/biji-client
-      '@biji/queue':
+      '@gitnapp/biji-queue':
         specifier: workspace:*
         version: link:../../packages/biji-queue
       '@modelcontextprotocol/sdk':
@@ -89,7 +89,7 @@ importers:
 
   packages/biji-queue:
     dependencies:
-      '@biji/client':
+      '@gitnapp/biji-client':
         specifier: workspace:*
         version: link:../biji-client
     devDependencies:

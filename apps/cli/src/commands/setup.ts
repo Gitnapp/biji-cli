@@ -34,7 +34,7 @@ export function registerSetupCommand(program: Command): void {
   setup
     .command("add [tool]")
     .description("Write the get-biji MCP server into a client config (merges, backs up existing)")
-    .option("--npx", "use the published `npx -y biji-mcp` form instead of the local build")
+    .option("--npx", "use the published `npx -y @gitnapp/biji-mcp` form instead of the local build")
     .option("--node", "use the literal `node` command instead of an absolute node path")
     .option("--file <path>", "install into an arbitrary JSON config file (for unsupported clients)")
     .option("--key <key>", "server map key for --file (default: mcpServers)", "mcpServers")

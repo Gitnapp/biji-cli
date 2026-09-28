@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import * as readline from "readline";
-import { authStatus as rawAuthStatus, setAuth, getAuth, getUserInfo, type AuthInfo } from "@biji/client";
+import { authStatus as rawAuthStatus, setAuth, getAuth, getUserInfo, type AuthInfo } from "@gitnapp/biji-client";
 import { readStdin } from "../io.js";
 
 /** Human-readable status string for `biji auth status` and `biji doctor`. */

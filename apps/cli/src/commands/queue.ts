@@ -19,7 +19,7 @@ import {
   type JobStatus,
   type LinkPayload,
   type UploadPayload,
-} from "@biji/queue";
+} from "@gitnapp/biji-queue";
 
 function readUrlFile(file: string): string[] {
   const out: string[] = [];

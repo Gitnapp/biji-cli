@@ -114,14 +114,14 @@ export function isSelfHosted(): boolean {
 }
 
 export interface ServerSpecOptions {
-  /** Emit the published `npx -y biji-mcp` form instead of the local node path. */
+  /** Emit the published `npx -y @gitnapp/biji-mcp` form instead of the local node path. */
   npx?: boolean;
   /** Use the literal `"node"` command instead of an absolute node path. */
   node?: boolean;
 }
 
 export function resolveServerSpec(opts: ServerSpecOptions = {}): McpServerSpec {
-  if (opts.npx) return { command: "npx", args: ["-y", "biji-mcp"] };
+  if (opts.npx) return { command: "npx", args: ["-y", "@gitnapp/biji-mcp"] };
   if (selfHosted) return { command: process.execPath, args: ["mcp"] };
   const command = opts.node ? "node" : process.execPath;
   return { command, args: [localMcpEntry()] };

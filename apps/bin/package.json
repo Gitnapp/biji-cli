@@ -1,5 +1,5 @@
 {
-  "name": "@biji/bin",
+  "name": "@gitnapp/biji-bin",
   "version": "0.1.0",
   "private": true,
   "description": "Single-executable entry: `biji` CLI + `biji mcp` server + queue worker in one binary",
@@ -11,9 +11,9 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
-    "@biji/cli": "workspace:*",
-    "@biji/queue": "workspace:*",
-    "biji-mcp": "workspace:*"
+    "@gitnapp/biji-cli": "workspace:*",
+    "@gitnapp/biji-queue": "workspace:*",
+    "@gitnapp/biji-mcp": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

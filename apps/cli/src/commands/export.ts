@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import * as fs from "fs";
 import * as path from "path";
-import { createExportTask, getExportTask, waitForExportTask, type ExportFormat, type ExportTask } from "@biji/client";
+import { createExportTask, getExportTask, waitForExportTask, type ExportFormat, type ExportTask } from "@gitnapp/biji-client";
 
 const VALID: ExportFormat[] = ["pdf", "docx", "md", "mp3"];
 

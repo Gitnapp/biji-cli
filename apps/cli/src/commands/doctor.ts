@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import * as fs from "fs";
-import { authStatus, FileAuthStorage, getUserInfo } from "@biji/client";
-import { counts, isWorkerAlive, dbPath, logPath } from "@biji/queue";
+import { authStatus, FileAuthStorage, getUserInfo } from "@gitnapp/biji-client";
+import { counts, isWorkerAlive, dbPath, logPath } from "@gitnapp/biji-queue";
 import { formatAuthStatus } from "./auth.js";
 import { allStatuses, isSelfHosted, localMcpEntry } from "../mcp-targets.js";
 
