@@ -1,6 +1,5 @@
 import { spawn } from "child_process";
 import * as fs from "fs";
-import * as path from "path";
 import { logPath, pidPath } from "./paths.js";
 
 export interface AliveInfo {
@@ -22,45 +21,33 @@ export function isWorkerAlive(): AliveInfo {
   }
 }
 
-/**
- * Resolve the path to the standalone worker entry that the daemon should
- * spawn. By default uses the bin shipped with this package (`bin/worker.js`
- * sibling of this compiled file), but tests or alternative wrappers can pass
- * a custom entry.
- */
-function defaultWorkerEntry(): string {
-  return path.join(__dirname, "bin", "worker.js");
-}
-
-let workerArgs: string[] | null = null;
+/** argv[1] inside a `bun build --compile` executable: /$bunfs/… (POSIX) or B:\~BUN\… (Windows). */
+const BUN_EMBEDDED_SCRIPT = /^(\/\$bunfs\/|[A-Za-z]:[\\/]~BUN[\\/])/;
 
 /**
- * Override the argv passed to `process.execPath` when spawning the worker.
- * The standalone binary has no bin/worker.js on disk, so it re-invokes itself
- * with a hidden subcommand instead (e.g. `["__queue-worker"]`).
+ * How to re-invoke the running `biji` program with extra arguments. Under Node
+ * that is `node [execArgv] <script> ...args`; in the compiled single-file
+ * binary the executable itself is the program, so it's just `<exe> ...args`.
  */
-export function setWorkerCommand(args: string[]): void {
-  workerArgs = args;
-}
-
-export interface EnsureDaemonOptions {
-  /** Override the worker entry path. Defaults to bin/worker.js next to daemon.js. */
-  workerEntry?: string;
+export function selfCommand(args: string[]): { command: string; args: string[] } {
+  const script = process.argv[1];
+  if (!script || BUN_EMBEDDED_SCRIPT.test(script)) return { command: process.execPath, args };
+  return { command: process.execPath, args: [...process.execArgv, script, ...args] };
 }
 
 /**
- * Ensure a background worker is running. If one isn't, spawn a detached child
- * process that runs the queue worker bin and immediately unrefs so the parent
- * can exit.
+ * Ensure a background worker is running. If one isn't, spawn a detached
+ * `biji queue worker --daemon` child and immediately unref so the parent can
+ * exit.
  */
-export function ensureDaemon(opts: EnsureDaemonOptions = {}): { pid: number; started: boolean } {
+export function ensureDaemon(): { pid: number; started: boolean } {
   const cur = isWorkerAlive();
   if (cur.alive && cur.pid !== undefined) return { pid: cur.pid, started: false };
 
-  const args = opts.workerEntry ? [opts.workerEntry] : workerArgs ?? [defaultWorkerEntry()];
+  const cmd = selfCommand(["queue", "worker", "--daemon"]);
   const out = fs.openSync(logPath(), "a");
   const err = fs.openSync(logPath(), "a");
-  const child = spawn(process.execPath, args, {
+  const child = spawn(cmd.command, cmd.args, {
     detached: true,
     stdio: ["ignore", out, err],
     env: process.env,

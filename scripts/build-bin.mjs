@@ -1,18 +1,19 @@
 #!/usr/bin/env node
-// Compile apps/bin into standalone executables with `bun build --compile`.
+// Compile the bundled CLI (apps/cli/dist/biji.js) into standalone executables
+// with `bun build --compile`.
 //
 //   node scripts/build-bin.mjs              # current platform only
 //   node scripts/build-bin.mjs --all        # every target in TARGETS
 //   node scripts/build-bin.mjs linux-x64 darwin-arm64
 //
-// Expects `pnpm -r build` to have run (bundles apps/bin/dist/main.js).
+// Expects `pnpm -r build` to have run.
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const entry = path.join(root, "apps/bin/dist/main.js");
+const entry = path.join(root, "apps/cli/dist/biji.js");
 const outDir = path.join(root, "release");
 const bun = path.join(root, "node_modules/.bin", process.platform === "win32" ? "bun.cmd" : "bun");
 

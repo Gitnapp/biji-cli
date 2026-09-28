@@ -17,6 +17,8 @@ import { registerQueueCommand } from "./commands/queue.js";
 import { registerDoctorCommand } from "./commands/doctor.js";
 import { registerSetupCommand } from "./commands/setup.js";
 import { registerAiCommand, printAiGuide } from "./commands/ai.js";
+import { registerMcpCommand } from "./commands/mcp.js";
+import { VERSION } from "./version.js";
 
 // `biji --ai` (top-level, no subcommand) short-circuits before commander parses.
 // Match only the LEADING token so `--ai` passed as a positional/option value to a
@@ -29,8 +31,8 @@ if (process.argv.slice(2)[0] === "--ai") {
 const program = new Command();
 program
   .name("biji")
-  .description("CLI for Get笔记 (biji.com): write / link / search / edit / queue / mcp setup")
-  .version("0.1.0")
+  .description("CLI for Get笔记 (biji.com): write / link / search / edit / queue / MCP server")
+  .version(VERSION)
   .option("--ai", "print an AI-agent oriented usage guide and exit");
 
 loadAuth();
@@ -51,6 +53,7 @@ registerQueueCommand(program);
 registerDoctorCommand(program);
 registerSetupCommand(program);
 registerAiCommand(program);
+registerMcpCommand(program);
 
 program.parseAsync(process.argv).catch((err) => {
   console.error("Error:", err.message || err);

@@ -1,10 +1,10 @@
 {
   "name": "@gitnapp/biji-cli",
-  "version": "0.1.0",
-  "description": "CLI for Get笔记 (biji.com) — write / link / search / edit notes from your terminal",
-  "main": "dist/cli.js",
+  "version": "0.2.0",
+  "description": "CLI + MCP server for Get笔记 (biji.com) — write / link / search / edit notes from your terminal, or `biji mcp` for AI clients",
+  "main": "dist/biji.js",
   "bin": {
-    "biji": "dist/cli.js"
+    "biji": "dist/biji.js"
   },
   "repository": {
     "type": "git",
@@ -17,37 +17,38 @@
     "access": "public"
   },
   "files": [
-    "dist/",
+    "dist/biji.js",
     "README.md",
-    "CHANGELOG.md",
     "LICENSE"
   ],
   "scripts": {
-    "build": "tsc",
+    "build": "tsc --noEmit && esbuild src/cli.ts --bundle --platform=node --target=node22 --format=cjs --outfile=dist/biji.js --log-level=warning",
     "dev": "tsx src/cli.ts",
-    "start": "node dist/cli.js",
+    "start": "node dist/biji.js",
     "prepublishOnly": "pnpm run build"
   },
   "keywords": [
     "biji",
-    "get-biji",
-    "notes",
     "cli",
+    "get-biji",
+    "markdown",
+    "mcp",
+    "mcp-server",
     "note-taking",
-    "markdown"
+    "notes"
   ],
   "license": "ISC",
   "type": "commonjs",
   "engines": {
     "node": ">=22.13.0"
   },
-  "dependencies": {
-    "@gitnapp/biji-client": "workspace:*",
-    "@gitnapp/biji-queue": "workspace:*",
-    "commander": "^12.1.0"
-  },
   "devDependencies": {
+    "@gitnapp/biji-client": "workspace:*",
+    "@gitnapp/biji-mcp": "workspace:*",
+    "@gitnapp/biji-queue": "workspace:*",
     "@types/node": "^22.10.0",
+    "commander": "^12.1.0",
+    "esbuild": "^0.27.7",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3"
   }

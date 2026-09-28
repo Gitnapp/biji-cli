@@ -1,6 +1,7 @@
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
+import { selfCommand } from "@gitnapp/biji-queue";
 
 /**
  * One-stop registry of MCP clients that can auto-install the get-biji server,
@@ -90,41 +91,21 @@ export function findTarget(id: string): McpTarget | undefined {
   return TARGETS.find((t) => t.id === id);
 }
 
-/**
- * Absolute path to the locally built MCP server entry (apps/mcp/dist/index.js).
- * Works from both the compiled CLI (apps/cli/dist/) and tsx dev (apps/cli/src/),
- * since both sit two levels under the `apps/` parent.
- */
-export function localMcpEntry(): string {
-  return path.resolve(__dirname, "..", "..", "mcp", "dist", "index.js");
-}
-
-let selfHosted = false;
-
-/**
- * Called by the standalone binary: the MCP server is this same executable
- * run as `<exe> mcp`, not a separate apps/mcp/dist/index.js on disk.
- */
-export function useSelfHostedServer(): void {
-  selfHosted = true;
-}
-
-export function isSelfHosted(): boolean {
-  return selfHosted;
-}
-
 export interface ServerSpecOptions {
-  /** Emit the published `npx -y @gitnapp/biji-mcp` form instead of the local node path. */
+  /** Emit the published `npx -y @gitnapp/biji-cli mcp` form instead of this install's path. */
   npx?: boolean;
   /** Use the literal `"node"` command instead of an absolute node path. */
   node?: boolean;
 }
 
+/**
+ * The MCP server is this same program run as `biji mcp`. By default the spec
+ * uses absolute paths (GUI clients often lack the shell's PATH / nvm setup).
+ */
 export function resolveServerSpec(opts: ServerSpecOptions = {}): McpServerSpec {
-  if (opts.npx) return { command: "npx", args: ["-y", "@gitnapp/biji-mcp"] };
-  if (selfHosted) return { command: process.execPath, args: ["mcp"] };
-  const command = opts.node ? "node" : process.execPath;
-  return { command, args: [localMcpEntry()] };
+  if (opts.npx) return { command: "npx", args: ["-y", "@gitnapp/biji-cli", "mcp"] };
+  const spec = selfCommand(["mcp"]);
+  return opts.node && !process.versions.bun ? { command: "node", args: spec.args } : spec;
 }
 
 type JsonObject = Record<string, unknown>;

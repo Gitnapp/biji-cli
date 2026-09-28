@@ -3,7 +3,7 @@ import * as fs from "fs";
 import { authStatus, FileAuthStorage, getUserInfo } from "@gitnapp/biji-client";
 import { counts, isWorkerAlive, dbPath, logPath } from "@gitnapp/biji-queue";
 import { formatAuthStatus } from "./auth.js";
-import { allStatuses, isSelfHosted, localMcpEntry } from "../mcp-targets.js";
+import { allStatuses, resolveServerSpec } from "../mcp-targets.js";
 
 type Level = "ok" | "warn" | "fail";
 
@@ -18,8 +18,8 @@ const ICON: Record<Level, string> = { ok: "✓", warn: "⚠", fail: "✗" };
 async function runChecks(opts: { offline?: boolean }): Promise<Check[]> {
   const checks: Check[] = [];
 
-  // 1. Runtime version (node:sqlite, used by the queue, needs Node >=22.13)
-  if (isSelfHosted()) {
+  // 1. Runtime (node:sqlite, used by the queue, needs Node >=22.13)
+  if (process.versions.bun) {
     checks.push({ name: "Runtime", level: "ok", detail: `standalone binary (${process.execPath})` });
   } else {
     const [major, minor] = process.versions.node.split(".").map(Number);
@@ -31,18 +31,9 @@ async function runChecks(opts: { offline?: boolean }): Promise<Check[]> {
     });
   }
 
-  // 2. MCP server build
-  if (isSelfHosted()) {
-    checks.push({ name: "MCP build", level: "ok", detail: `built in (\`${process.execPath} mcp\`)` });
-  } else {
-    const entry = localMcpEntry();
-    const built = fs.existsSync(entry);
-    checks.push({
-      name: "MCP build",
-      level: built ? "ok" : "warn",
-      detail: built ? entry : `${entry} missing — run \`pnpm -r build\``,
-    });
-  }
+  // 2. MCP server command
+  const spec = resolveServerSpec();
+  checks.push({ name: "MCP server", level: "ok", detail: [spec.command, ...spec.args].join(" ") });
 
   // 3. Auth credentials
   const s = formatAuthStatus();

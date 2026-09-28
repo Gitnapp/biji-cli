@@ -12,40 +12,26 @@ importers:
         specifier: ^1.4.2
         version: 1.4.2
 
-  apps/bin:
-    dependencies:
-      '@gitnapp/biji-cli':
+  apps/cli:
+    devDependencies:
+      '@gitnapp/biji-client':
         specifier: workspace:*
-        version: link:../cli
+        version: link:../../packages/biji-client
       '@gitnapp/biji-mcp':
         specifier: workspace:*
         version: link:../mcp
       '@gitnapp/biji-queue':
         specifier: workspace:*
         version: link:../../packages/biji-queue
-    devDependencies:
       '@types/node':
         specifier: ^22.10.0
         version: 22.19.17
-      typescript:
-        specifier: ^5.9.3
-        version: 5.9.3
-
-  apps/cli:
-    dependencies:
-      '@gitnapp/biji-client':
-        specifier: workspace:*
-        version: link:../../packages/biji-client
-      '@gitnapp/biji-queue':
-        specifier: workspace:*
-        version: link:../../packages/biji-queue
       commander:
         specifier: ^12.1.0
         version: 12.1.0
-    devDependencies:
-      '@types/node':
-        specifier: ^22.10.0
-        version: 22.19.17
+      esbuild:
+        specifier: ^0.27.7
+        version: 0.27.7
       tsx:
         specifier: ^4.21.0
         version: 4.21.0
@@ -71,9 +57,6 @@ importers:
       '@types/node':
         specifier: ^22.10.0
         version: 22.19.17
-      tsx:
-        specifier: ^4.21.0
-        version: 4.21.0
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
