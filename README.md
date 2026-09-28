@@ -283,6 +283,9 @@ biji --ai                  # 打印面向 AI agent 的精简用法手册（等�
 
 ```bash
 docker build -t biji .
+# 宿主机开着 Clash/mihomo 等 TUN 代理（fake-ip 模式，域名解析成 198.18.x.x）时，
+# 容器走 bridge 网络连不上 npm，构建会卡在 corepack/pnpm install —— 改用宿主网络：
+docker build --network=host -t biji .
 
 # CLI：先登录（auth 落到 named volume）
 docker run -it --rm -v biji-config:/root/.config/get-biji biji biji auth login
