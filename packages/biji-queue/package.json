@@ -9,11 +9,11 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Gitnapp/get-biji-api.git",
+    "url": "git+https://github.com/Gitnapp/biji-cli.git",
     "directory": "packages/biji-queue"
   },
-  "homepage": "https://github.com/Gitnapp/get-biji-api/tree/main/packages/biji-queue#readme",
-  "bugs": "https://github.com/Gitnapp/get-biji-api/issues",
+  "homepage": "https://github.com/Gitnapp/biji-cli/tree/main/packages/biji-queue#readme",
+  "bugs": "https://github.com/Gitnapp/biji-cli/issues",
   "publishConfig": {
     "access": "public"
   },

@@ -1,4 +1,4 @@
-# get-biji-api
+# biji-cli
 
 biji.com (Get笔记) 客户端套件 monorepo —— 共享 SDK + CLI + MCP server。
 
