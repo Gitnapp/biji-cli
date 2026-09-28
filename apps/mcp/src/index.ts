@@ -1,5 +1,3 @@
-#!/usr/bin/env node
-
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import * as api from "@gitnapp/biji-client";
@@ -11,23 +9,26 @@ import * as yoda from "./tools/yoda.js";
 import * as ai from "./tools/ai.js";
 import * as queueTools from "./tools/queue.js";
 
-const server = new McpServer({
-  name: "get-biji",
-  version: "0.1.0",
-  description: "MCP server for Get笔记 (biji.com) — AI-driven note-taking app",
-});
+/** Build the server with every tool registered (no transport attached). */
+export function createMcpServer(version: string): McpServer {
+  const server = new McpServer({
+    name: "get-biji",
+    version,
+    description: "MCP server for Get笔记 (biji.com) — AI-driven note-taking app",
+  });
 
-auth.register(server);
-notes.register(server);
-topics.register(server);
-misc.register(server);
-yoda.register(server);
-ai.register(server);
-queueTools.register(server);
+  auth.register(server);
+  notes.register(server);
+  topics.register(server);
+  misc.register(server);
+  yoda.register(server);
+  ai.register(server);
+  queueTools.register(server);
+  return server;
+}
 
-// ──────────────────── Start Server ────────────────────
-
-async function main() {
+/** Entry for `biji mcp`: serve on stdio. All logging goes to stderr — stdout is the protocol. */
+export async function startMcpServer(version: string): Promise<void> {
   // Auto-load auth from env vars or saved file
   if (api.loadAuth()) {
     const authState = api.getAuth();
@@ -42,12 +43,7 @@ async function main() {
     console.error("[startup] no saved auth found, use set_auth or set_token to authenticate");
   }
 
-  const transport = new StdioServerTransport();
-  await server.connect(transport);
+  const server = createMcpServer(version);
+  await server.connect(new StdioServerTransport());
   console.error("Get笔记 MCP server running on stdio");
 }
-
-main().catch((err) => {
-  console.error("Fatal error:", err);
-  process.exit(1);
-});

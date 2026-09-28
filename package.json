@@ -2,7 +2,7 @@
   "name": "biji-cli",
   "private": true,
   "version": "0.0.0",
-  "description": "Monorepo for biji.com clients: shared API package, CLI, and MCP server",
+  "description": "biji-cli monorepo: the `biji` CLI + MCP server for biji.com, with internal client/queue/mcp packages",
   "packageManager": "pnpm@10.31.0",
   "engines": {
     "node": ">=18.0.0"
@@ -10,7 +10,7 @@
   "scripts": {
     "build": "pnpm -r build",
     "dev:cli": "pnpm --filter @gitnapp/biji-cli dev",
-    "dev:mcp": "pnpm --filter @gitnapp/biji-mcp dev",
+    "dev:mcp": "pnpm --filter @gitnapp/biji-cli dev mcp",
     "clean": "pnpm -r exec rm -rf dist tsconfig.tsbuildinfo",
     "build:bin": "pnpm -r build && node scripts/build-bin.mjs",
     "build:bin:all": "pnpm -r build && node scripts/build-bin.mjs --all"

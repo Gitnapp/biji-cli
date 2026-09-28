@@ -1,33 +1,12 @@
 {
   "name": "@gitnapp/biji-mcp",
   "version": "0.1.0",
-  "description": "MCP server for Get笔记 (biji.com) - AI-driven note-taking app",
+  "private": true,
+  "description": "MCP server for Get笔记 (biji.com) — internal; shipped inside @gitnapp/biji-cli as `biji mcp`",
   "main": "dist/index.js",
-  "bin": {
-    "biji-mcp": "dist/index.js"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/Gitnapp/biji-cli.git",
-    "directory": "apps/mcp"
-  },
-  "homepage": "https://github.com/Gitnapp/biji-cli/tree/main/apps/mcp#readme",
-  "bugs": "https://github.com/Gitnapp/biji-cli/issues",
-  "publishConfig": {
-    "access": "public"
-  },
-  "files": [
-    "dist/",
-    "README.md",
-    "LICENSE"
-  ],
   "scripts": {
-    "build": "tsc",
-    "start": "node dist/index.js",
-    "dev": "tsx src/index.ts",
-    "prepublishOnly": "pnpm run build"
+    "build": "tsc"
   },
-  "keywords": ["mcp", "biji", "notes", "get-notes"],
   "license": "ISC",
   "type": "commonjs",
   "engines": {
@@ -41,7 +20,6 @@
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
-    "tsx": "^4.21.0",
     "typescript": "^5.9.3"
   }
 }

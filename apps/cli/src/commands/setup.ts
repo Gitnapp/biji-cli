@@ -1,29 +1,17 @@
 import { Command } from "commander";
-import * as fs from "fs";
 import {
   TARGETS,
   SERVER_NAME,
   findTarget,
-  isSelfHosted,
-  localMcpEntry,
   resolveServerSpec,
   installServer,
   installServerToFile,
   uninstallServer,
   allStatuses,
-  type McpServerSpec,
 } from "../mcp-targets.js";
 
 function knownIds(): string {
   return TARGETS.map((t) => t.id).join(", ");
-}
-
-function warnIfUnbuilt(spec: McpServerSpec): void {
-  // The local-node spec points at apps/mcp/dist/index.js; warn early if it's missing.
-  if (spec.command !== "npx" && !isSelfHosted() && !fs.existsSync(localMcpEntry())) {
-    console.warn(`⚠ MCP server not built yet: ${localMcpEntry()}`);
-    console.warn("  Run `pnpm -r build` so the configured server can start.\n");
-  }
 }
 
 export function registerSetupCommand(program: Command): void {
@@ -34,7 +22,7 @@ export function registerSetupCommand(program: Command): void {
   setup
     .command("add [tool]")
     .description("Write the get-biji MCP server into a client config (merges, backs up existing)")
-    .option("--npx", "use the published `npx -y @gitnapp/biji-mcp` form instead of the local build")
+    .option("--npx", "register `npx -y @gitnapp/biji-cli mcp` instead of this install's absolute path")
     .option("--node", "use the literal `node` command instead of an absolute node path")
     .option("--file <path>", "install into an arbitrary JSON config file (for unsupported clients)")
     .option("--key <key>", "server map key for --file (default: mcpServers)", "mcpServers")
@@ -46,7 +34,6 @@ export function registerSetupCommand(program: Command): void {
     ) => {
       const spec = resolveServerSpec({ npx: opts.npx, node: opts.node });
       const name = opts.name || SERVER_NAME;
-      warnIfUnbuilt(spec);
 
       if (opts.file) {
         const r = installServerToFile(opts.file, spec, opts.key || "mcpServers", name);
