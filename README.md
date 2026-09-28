@@ -8,11 +8,13 @@ biji.com (Get笔记) 客户端套件 monorepo —— 共享 SDK + CLI + MCP serv
 .
 ├── apps/
 │   ├── cli/            @biji/cli     终端命令行 (biji)；src/commands/* 每个子命令一个文件
-│   └── mcp/            biji-mcp      stdio MCP server；src/tools/* 按领域分组的 100 个工具
+│   ├── mcp/            biji-mcp      stdio MCP server；src/tools/* 按领域分组的 100 个工具
+│   └── bin/            @biji/bin     单文件可执行入口（private）：CLI + `biji mcp` + 队列 worker
 ├── packages/
 │   ├── biji-client/    @biji/client  SDK：client.ts (HTTP/SSE) · auth.ts · api.ts (~117 端点)
 │   │                                 · flows.ts (跨端复用的业务流程) · markdown.ts (md → TipTap)
 │   └── biji-queue/     @biji/queue   本地 SQLite 队列 + 后台 worker
+├── scripts/build-bin.mjs  用 bun 把 apps/bin 编译成各平台单文件二进制
 ├── scripts/capture/    抓包脚本（不在 workspace 内，仅开发用）
 ├── Dockerfile · compose.yaml · .dockerignore
 └── pnpm-workspace.yaml · tsconfig.base.json
@@ -22,7 +24,7 @@ biji.com (Get笔记) 客户端套件 monorepo —— 共享 SDK + CLI + MCP serv
 
 ## 安装与构建
 
-需要 `pnpm@10+` 和 `node@18+`。
+需要 `pnpm@10+` 和 `node@22.13+`（队列用内置的 `node:sqlite`；只用 `@biji/client` SDK 的话 Node 18 即可）。
 
 ```bash
 pnpm install
@@ -35,6 +37,26 @@ pnpm -r build          # 拓扑顺序：先 client，再 cli/mcp
 pnpm dev:cli           # tsx watch apps/cli/src/cli.ts
 pnpm dev:mcp           # tsx watch apps/mcp/src/index.ts
 ```
+
+### 单文件二进制
+
+不想装 Node 的话，可以把 CLI、MCP server、队列 worker 一起编译成一个可执行文件（基于 `bun build --compile`，bun 作为 devDependency 自动安装）：
+
+```bash
+pnpm build:bin         # 当前平台 → release/biji-<os>-<arch>
+pnpm build:bin:all     # linux-x64/arm64 · darwin-x64/arm64 · windows-x64（交叉编译）
+node scripts/build-bin.mjs linux-arm64 darwin-arm64   # 指定目标（需先 pnpm -r build）
+```
+
+产物约 60–85MB，无任何运行时依赖。用法：
+
+```bash
+./biji-linux-x64 search "关键词"     # 等价于 biji CLI
+./biji-linux-x64 mcp                 # stdio MCP server（等价于 biji-mcp）
+./biji-linux-x64 setup add claude-code   # 注册成 { command: <二进制绝对路径>, args: ["mcp"] }
+```
+
+队列 worker 由二进制以隐藏子命令 `__queue-worker` 自行拉起，不需要额外文件。
 
 ## CLI 用法
 
@@ -257,10 +279,13 @@ biji --ai                  # 打印面向 AI agent 的精简用法手册（等�
 
 ## Docker
 
-一个镜像同时提供 `biji` 和 `biji-mcp` 两个命令，基于 `node:22-bookworm-slim`（glibc，better-sqlite3 直接用预编译二进制）。运行状态（auth.json、队列数据库）统一挂在 `/root/.config/get-biji`，本地文件通过 `/work` 挂载进去。
+一个镜像同时提供 `biji` 和 `biji-mcp` 两个命令，基于 `node:22-bookworm-slim`（队列用内置 `node:sqlite`，无原生模块）。运行状态（auth.json、队列数据库）统一挂在 `/root/.config/get-biji`，本地文件通过 `/work` 挂载进去。
 
 ```bash
 docker build -t biji .
+# 宿主机开着 Clash/mihomo 等 TUN 代理（fake-ip 模式，域名解析成 198.18.x.x）时，
+# 容器走 bridge 网络连不上 npm，构建会卡在 corepack/pnpm install —— 改用宿主网络：
+docker build --network=host -t biji .
 
 # CLI：先登录（auth 落到 named volume）
 docker run -it --rm -v biji-config:/root/.config/get-biji biji biji auth login
@@ -281,7 +306,7 @@ MCP 客户端配置里把 `command` 写成 `docker`、`args` 写成上面那串�
 
 1. **`@biji` scope 归属**：`@biji/client` / `@biji/queue` / `@biji/cli` 是 scoped 包，发布前需在 npm 上创建并拥有 `@biji` org（或改成你自己的 username scope）。`biji-mcp` 是 unscoped（`get-biji-mcp` 已被他人占用，故改名）。
 2. **依赖顺序**：`pnpm pack/publish` 会把 `workspace:*` 改写成当前精确版本（如 `@biji/client@0.1.0`），所以必须**先发依赖再发上层**：`@biji/client` → `@biji/queue` → `biji-mcp` / `@biji/cli`。四包版本保持一致（当前都是 0.1.0），bump 时一起 re-pack 避免悬空精确 pin。
-3. **better-sqlite3 原生模块**：`@biji/queue` 依赖 `better-sqlite3`（native addon）。预编译二进制覆盖 **Node 18–22**；用户在这些版本上 `npx biji-mcp` 开箱即用。更高/更冷门的 Node 需要 C++ 工具链从源码编译。MCP server 已对此做降级——加载失败时只有 7 个 queue 工具不可用，其余 ~93 个工具照常启动（见 `packages/biji-queue/src/store.ts` 的惰性加载）。
+3. **Node 版本**：`@biji/queue` 用 Node 内置的 `node:sqlite`（无原生模块，不需要编译工具链），要求 **Node ≥22.13**。MCP server 对此做了降级——更老的 Node 上只有 7 个 queue 工具不可用，其余 ~93 个工具照常启动（见 `packages/biji-queue/src/store.ts` 的惰性加载）。
 
 ```bash
 npm login
@@ -387,7 +412,7 @@ awk '/"label":"before-X"/{f=1;next} /"label":"after-X"/{f=0} f' /tmp/biji-captur
 
 - TypeScript 5.9 (strict, ES2022 target, Node16 module)
 - pnpm 10 workspaces
-- Node 18+ (`fetch` / `ReadableStream` 内置)
+- Node 22.13+ (`fetch` / `ReadableStream` / `node:sqlite` 内置)；单文件二进制用 Bun `--compile`
 - `@modelcontextprotocol/sdk` (MCP server)
 - `commander` (CLI 框架)
 - `zod` (MCP tool schemas)

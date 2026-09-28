@@ -99,6 +99,20 @@ export function localMcpEntry(): string {
   return path.resolve(__dirname, "..", "..", "mcp", "dist", "index.js");
 }
 
+let selfHosted = false;
+
+/**
+ * Called by the standalone binary: the MCP server is this same executable
+ * run as `<exe> mcp`, not a separate apps/mcp/dist/index.js on disk.
+ */
+export function useSelfHostedServer(): void {
+  selfHosted = true;
+}
+
+export function isSelfHosted(): boolean {
+  return selfHosted;
+}
+
 export interface ServerSpecOptions {
   /** Emit the published `npx -y biji-mcp` form instead of the local node path. */
   npx?: boolean;
@@ -108,6 +122,7 @@ export interface ServerSpecOptions {
 
 export function resolveServerSpec(opts: ServerSpecOptions = {}): McpServerSpec {
   if (opts.npx) return { command: "npx", args: ["-y", "biji-mcp"] };
+  if (selfHosted) return { command: process.execPath, args: ["mcp"] };
   const command = opts.node ? "node" : process.execPath;
   return { command, args: [localMcpEntry()] };
 }

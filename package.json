@@ -11,9 +11,17 @@
     "build": "pnpm -r build",
     "dev:cli": "pnpm --filter @biji/cli dev",
     "dev:mcp": "pnpm --filter biji-mcp dev",
-    "clean": "pnpm -r exec rm -rf dist tsconfig.tsbuildinfo"
+    "clean": "pnpm -r exec rm -rf dist tsconfig.tsbuildinfo",
+    "build:bin": "pnpm -r build && node scripts/build-bin.mjs",
+    "build:bin:all": "pnpm -r build && node scripts/build-bin.mjs --all"
   },
   "pnpm": {
-    "onlyBuiltDependencies": ["better-sqlite3", "esbuild"]
+    "onlyBuiltDependencies": [
+      "bun",
+      "esbuild"
+    ]
+  },
+  "devDependencies": {
+    "bun": "^1.4.2"
   }
 }
